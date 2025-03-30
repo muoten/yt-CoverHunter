@@ -1,3 +1,22 @@
+---
+title: YouTube Cover Detector
+emoji: 🎵
+colorFrom: blue
+colorTo: red
+sdk: docker
+app_port: 7860
+---
+
+# YouTube Cover Detector
+
+This app detects if two YouTube videos are covers of each other using audio similarity.
+
+## Features
+- Upload YouTube URLs
+- Real-time cover detection
+- Visual feedback with thumbnails
+- Progress tracking
+
 # CoverHunterMPS
 
 Fork of [Liu Feng's CoverHunter](https://github.com/Liu-Feng-deeplearning/CoverHunter) project. Goals: Make it run, and run fast, on any platform. Document it better. And build it out as a useful toolset for music research generally.
