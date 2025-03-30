@@ -21,9 +21,7 @@ COPY templates/ /code/templates/
 
 # Set Python path to include app directory
 ENV PYTHONPATH=/code
-
-# Add environment variable for more verbose logging
 ENV PYTHONUNBUFFERED=1
 
 # Run the application with logging
-CMD ["sh", "-c", "echo 'Starting container...' && python -u youtube_cover_detector_api.py"] 
+CMD ["sh", "-c", "echo 'Starting container...' && uvicorn youtube_cover_detector_api:app --host 0.0.0.0 --port 7860"]
