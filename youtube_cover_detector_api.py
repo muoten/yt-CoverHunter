@@ -1,5 +1,4 @@
 # export an api to detect if 2 youtube videos are covers of each other
-from flask import Flask, request, jsonify
 import os
 from app.parse_config import config
 import numpy as np
@@ -15,5 +14,165 @@ import pathlib
 import tempfile
 from pathlib import Path
 import requests
+import time
 
-# Rest of your API code... 
+# Use Render's persistent storage if available
+if os.getenv('RENDER'):
+    WAV_DIR = Path("/opt/render/project/wav_files")
+else:
+    WAV_DIR = Path("/tmp/youtube_cover_detector_api_wav")
+
+# Create WAV directory with proper permissions
+WAV_DIR.mkdir(exist_ok=True, parents=True)
+os.chmod(str(WAV_DIR), 0o777)  # Give full permissions
+
+# Update config
+config['WAV_FOLDER'] = str(WAV_DIR)
+
+# Update the THRESHOLD setting
+THRESHOLD = float(os.getenv('THRESHOLD', config.get('THRESHOLD', 0.3)))
+
+# Add more logging
+def download_checkpoint():
+    CHECKPOINT_URL = os.getenv('CHECKPOINT_URL')
+    if CHECKPOINT_URL:
+        print("Starting model download from:", CHECKPOINT_URL)
+        try:
+            os.makedirs('pretrain_model', exist_ok=True)
+            response = requests.get(CHECKPOINT_URL)
+            if response.status_code == 200:
+                with open('pretrain_model/checkpoint.pt', 'wb') as f:
+                    f.write(response.content)
+                print("Model checkpoint downloaded successfully!")
+            else:
+                print(f"Failed to download model: {response.status_code}")
+        except Exception as e:
+            print(f"Error downloading model: {str(e)}")
+            raise
+
+print("Starting application...")
+download_checkpoint()
+print("Checkpoint download complete, initializing FastAPI app...")
+
+# Create the FastAPI app
+app = FastAPI()
+
+# Store results in memory
+detection_results: Dict[str, Dict] = {}
+
+# Setup CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://muoten-yt-cover-detector.hf.space",  # Hugging Face Space URL
+        "http://localhost:7860",  # Local development
+        "*"  # Allow all origins for testing
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Define directories
+BASE_DIR = pathlib.Path(__file__).parent
+TEMPLATES_DIR = BASE_DIR / "templates"
+STATIC_DIR = BASE_DIR / "static"
+
+# Create directories if they don't exist
+TEMPLATES_DIR.mkdir(exist_ok=True)
+STATIC_DIR.mkdir(exist_ok=True)
+
+# Add VideoRequest model
+class VideoRequest(BaseModel):
+    video_url1: str
+    video_url2: str
+
+# Add API endpoints
+@app.post("/api/detect-cover")
+async def detect_cover(request: VideoRequest, background_tasks: BackgroundTasks):
+    # Generate a unique task ID
+    task_id = str(hash(request.video_url1 + request.video_url2 + str(asyncio.get_event_loop().time())))
+    
+    # Initialize the task status
+    detection_results[task_id] = {
+        "status": "processing",
+        "result": None,
+        "error": None
+    }
+    
+    # Add the task to background processing
+    background_tasks.add_task(process_video, request.video_url1, request.video_url2, task_id)
+    
+    return {"task_id": task_id, "status": "processing"}
+
+@app.get("/api/detection-status/{task_id}")
+async def get_detection_status(task_id: str):
+    if task_id not in detection_results:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return detection_results[task_id]
+
+@app.post("/api/get-thumbnails")
+async def get_thumbnails(request: VideoRequest):
+    try:
+        detector = YoutubeCoverDetector()
+        video_id1 = detector._get_video_id(request.video_url1)
+        video_id2 = detector._get_video_id(request.video_url2)
+        
+        return {
+            "video_urls": {
+                "url1": request.video_url1,
+                "url2": request.video_url2
+            },
+            "thumbnails": {
+                "video1": detector._get_thumbnail_url(video_id1),
+                "video2": detector._get_thumbnail_url(video_id2)
+            }
+        }
+    except Exception as e:
+        print(f"Error in get_thumbnails: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+async def process_video(video_url1: str, video_url2: str, task_id: str):
+    try:
+        # Clean up old files first
+        cleanup_old_files(WAV_DIR)
+        
+        detector = YoutubeCoverDetector()
+        result = await detector.detect_cover(video_url1, video_url2)
+        
+        detection_results[task_id] = {
+            "status": "completed",
+            "result": result,
+            "error": None
+        }
+    except Exception as e:
+        detection_results[task_id] = {
+            "status": "failed",
+            "error": str(e),
+            "result": None
+        }
+    finally:
+        # Clean up files after processing
+        cleanup_old_files(WAV_DIR, max_age_hours=0)
+
+def cleanup_old_files(directory: Path, max_age_hours: int = 1):
+    """Remove files older than max_age_hours"""
+    current_time = time.time()
+    for file_path in directory.glob("*.wav"):
+        if current_time - file_path.stat().st_mtime > (max_age_hours * 3600):
+            try:
+                file_path.unlink()
+            except Exception as e:
+                print(f"Failed to delete {file_path}: {e}")
+
+# Serve static files
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+# Serve index.html at root
+@app.get("/")
+async def read_root():
+    return FileResponse(str(TEMPLATES_DIR / "index.html"))
+
+if __name__ == '__main__':
+    import uvicorn
+    uvicorn.run(app, host='0.0.0.0', port=7860) 

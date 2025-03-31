@@ -1,0 +1,4 @@
+WAV_FOLDER: /tmp/youtube_cover_detector_api_wav
+MODEL_FOLDER: pretrain_model  # Point to original checkpoint
+COVERHUNTER_FOLDER: ~/github-projects/yt-CoverHunter
+THRESHOLD: 0.3  # Remove the environment variable syntax here

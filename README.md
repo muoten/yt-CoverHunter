@@ -5,6 +5,7 @@ colorFrom: blue
 colorTo: red
 sdk: docker
 app_port: 7860
+license: mit
 ---
 
 # YouTube Cover Detector
@@ -393,3 +394,15 @@ As a contribution to the CSI community, where the [SHS100K dataset](https://gith
 This figure may be helpful as a reference for comparing the distribution of works vs. performances in datasets you want to use with CoverHunterMPS, knowing that CoverHunter was able to train successfully given this distribution. 
 
 To help you understand this visualization of the SHS100K dataset, here are some example data points from it: The most common work ("Summertime") is represented by  387 performances, and there are over 300 works having only a single performance. The most common count of performances per work is 6.
+
+# YouTube Cover Detector Model
+
+This is a model trained to detect if two YouTube videos are covers of each other, based on the CoverHunter architecture.
+
+## Model Information
+- Checkpoint: g_00000043 (epoch 43)
+- Architecture: CoverHunter
+- Task: Cover Song Detection
+
+## Usage
+This model is used by the [YouTube Cover Detector Space](https://huggingface.co/spaces/muoten/youtube-cover-detector) to detect if two YouTube videos are covers of each other.
