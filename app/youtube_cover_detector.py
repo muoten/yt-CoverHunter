@@ -33,6 +33,7 @@ def _generate_audio_from_youtube_id(youtube_id):
         # Download with yt-dlp
         ydl_opts = {
             'format': 'bestaudio/best',
+            'cookiesfrombrowser': ('chrome',),  # Use Chrome cookies
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
