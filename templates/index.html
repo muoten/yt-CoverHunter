@@ -256,10 +256,9 @@
     <div id="preview" class="preview-container card" style="display: none;"></div>
 
     <script>
-        // To try to fix CORS issues
         const API_URL = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost'
             ? `http://${window.location.host}/api`  // Local development
-            : 'https://muoten-yt-coverdetector.hf.space/api';  // Hugging Face deployment
+            : 'https://yt-coverhunter.onrender.com/api';  // Render deployment
 
         console.log('Using API URL:', API_URL);
 
@@ -276,6 +275,9 @@
             const resultDiv = document.getElementById('result');
             const progressContainer = document.getElementById('progress-container');
             const previewDiv = document.getElementById('preview');
+            
+            // Debug API URL
+            console.log('Full API URL:', `${API_URL}/get-thumbnails`);
             
             console.log('Attempting to detect cover with URLs:', { url1, url2 });
             
@@ -303,8 +305,6 @@
                 // Start loading previews immediately
                 previewDiv.innerHTML = '<p class="loading">Loading previews...</p>';
                 
-                console.log('Fetching thumbnails from:', `${API_URL}/get-thumbnails`);
-                
                 const thumbnailResponse = await fetch(`${API_URL}/get-thumbnails`, {
                     method: 'POST',
                     headers: {
@@ -316,20 +316,16 @@
                         video_url2: url2
                     })
                 });
-                
+
+                // Debug response
                 console.log('Response status:', thumbnailResponse.status);
-                const contentType = thumbnailResponse.headers.get('content-type');
-                console.log('Content type:', contentType);
+                console.log('Response headers:', Object.fromEntries(thumbnailResponse.headers));
                 
+                // If not OK, log the full response
                 if (!thumbnailResponse.ok) {
-                    const errorText = await thumbnailResponse.text();
-                    console.error('Error response:', errorText);
-                    try {
-                        const errorJson = JSON.parse(errorText);
-                        throw new Error(errorJson.detail || errorText);
-                    } catch (e) {
-                        throw new Error(errorText);
-                    }
+                    const fullResponse = await thumbnailResponse.text();
+                    console.log('Full error response:', fullResponse);
+                    throw new Error(`API Error (${thumbnailResponse.status}): ${fullResponse.substring(0, 200)}...`);
                 }
 
                 const thumbnailData = await thumbnailResponse.json();
