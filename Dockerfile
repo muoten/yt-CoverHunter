@@ -5,7 +5,7 @@ WORKDIR /code
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     ffmpeg \
-    libsecret-1-0 \
+    aria2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching

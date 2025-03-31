@@ -33,16 +33,32 @@ def _generate_audio_from_youtube_id(youtube_id):
         # Download with yt-dlp
         ydl_opts = {
             'format': 'bestaudio/best',
-            'cookiesfrombrowser': ('chrome',),  # Use Chrome cookies
+            'quiet': True,
+            'no_warnings': True,
+            'geo_bypass': True,  # Try to bypass geo-restrictions
+            'geo_bypass_country': 'US',
+            'no_check_certificate': True,  # Skip HTTPS certificate validation
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
             }],
             'outtmpl': f'{WAV_FOLDER}/{youtube_id}.%(ext)s',
+            # Add fallback options
+            'external_downloader': 'aria2c',
+            'socket_timeout': 30,
+            'retries': 10,
+            'fragment_retries': 10,
+            'ignoreerrors': True
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([f'https://www.youtube.com/watch?v={youtube_id}'])
+            try:
+                ydl.download([f'https://www.youtube.com/watch?v={youtube_id}'])
+            except Exception as e:
+                print(f"Download failed with error: {str(e)}")
+                # Try alternate format if first attempt fails
+                ydl_opts['format'] = 'worstaudio/worst'
+                ydl.download([f'https://www.youtube.com/watch?v={youtube_id}'])
         
         # Convert to WAV
         mp3_path = f'{WAV_FOLDER}/{youtube_id}.mp3'

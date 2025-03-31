@@ -7,4 +7,3 @@ torch
 torchaudio==2.6.0
 uvicorn==0.34.0
 yt-dlp==2025.03.27
-browser-cookie3==0.19.1
