@@ -30,20 +30,25 @@ def _generate_audio_from_youtube_id(youtube_id):
         wav_folder.mkdir(exist_ok=True, parents=True)
         os.chmod(str(wav_folder), 0o777)  # Give full permissions
         
+        # Get cookie file path from environment or use default
+        cookie_file = os.getenv('COOKIE_FILE', '/etc/secrets/youtube_cookies.txt')
+        
+        # Check if cookie file exists
+        if not os.path.exists(cookie_file):
+            print(f"Warning: Cookie file not found at {cookie_file}")
+            cookie_file = None
+        
         # Download with yt-dlp
         ydl_opts = {
             'format': 'bestaudio/best',
             'quiet': True,
             'no_warnings': True,
-            'geo_bypass': True,  # Try to bypass geo-restrictions
-            'geo_bypass_country': 'US',
-            'no_check_certificate': True,  # Skip HTTPS certificate validation
+            'cookiesfile': cookie_file if cookie_file else None,
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
             }],
             'outtmpl': f'{WAV_FOLDER}/{youtube_id}.%(ext)s',
-            # Add fallback options
             'external_downloader': 'aria2c',
             'socket_timeout': 30,
             'retries': 10,
