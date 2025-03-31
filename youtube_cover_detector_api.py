@@ -64,8 +64,10 @@ detection_results: Dict[str, Dict] = {}
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://muoten-yt-cover-detector.hf.space",  # Hugging Face Space URL
+        "https://muoten-youtube-cover-detector.hf.space",  # Hugging Face Space URL
         "http://localhost:7860",  # Local development
+        "https://yt-coverhunter.onrender.com",  # Render URL
+        "https://yt-coverhunter.onrender.com/",  # Render URL with trailing slash
         "*"  # Allow all origins for testing
     ],
     allow_credentials=True,
