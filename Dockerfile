@@ -4,26 +4,26 @@ WORKDIR /code
 
 # Install system dependencies and HF's supported Chromium setup
 RUN apt-get update && apt-get install -y \
-chromium-driver \
-chromium \
-ffmpeg \
-libavcodec-extra \
-libav-tools \
-fonts-liberation \
-libnss3 \
-libatk1.0-0 \
-libatk-bridge2.0-0 \
-libcups2 \
-libxcomposite1 \
-libxdamage1 \
-libxrandr2 \
-libgbm1 \
-libxshmfence1 \
-libxss1 \
-libasound2 \
-libnspr4 \
-xdg-utils \
-&& rm -rf /var/lib/apt/lists/*
+    chromium-driver \
+    chromium \
+    ffmpeg \
+    libavcodec-extra \
+    libav-tools \
+    fonts-liberation \
+    libnss3 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libgbm1 \
+    libxshmfence1 \
+    libxss1 \
+    libasound2 \
+    libnspr4 \
+    xdg-utils \
+    && rm -rf /var/lib/apt/lists/*
 
 # Verify ffmpeg installation
 RUN ffmpeg -version
@@ -52,8 +52,8 @@ ENV PYTHONUNBUFFERED=1
 ENV PORT=8080
 ENV HOST=0.0.0.0
 ENV PYTHONIOENCODING=utf-8
-ENV PYTHONBREAKPOINT=0  # Disable pdb
-ENV PYTHONASYNCIODEBUG=1  # Enable asyncio debug
+ENV PYTHONBREAKPOINT=0
+ENV PYTHONASYNCIODEBUG=1
 
 RUN mkdir -p /tmp/.cache && chmod -R 777 /tmp/.cache
 
