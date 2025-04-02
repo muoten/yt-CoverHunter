@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 WORKDIR /code
 
-# Install system dependencies# Use HF's supported Chromium setup
+# Install system dependencies and HF's supported Chromium setup
 RUN apt-get update && apt-get install -y \
 chromium-driver \
 chromium \
@@ -10,9 +10,19 @@ ffmpeg \
 libavcodec-extra \
 libav-tools \
 fonts-liberation \
-libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
-libxcomposite1 libxdamage1 libxrandr2 libgbm1 \
-libxshmfence1 libxss1 libasound2 libnspr4 xdg-utils \
+libnss3 \
+libatk1.0-0 \
+libatk-bridge2.0-0 \
+libcups2 \
+libxcomposite1 \
+libxdamage1 \
+libxrandr2 \
+libgbm1 \
+libxshmfence1 \
+libxss1 \
+libasound2 \
+libnspr4 \
+xdg-utils \
 && rm -rf /var/lib/apt/lists/*
 
 # Verify ffmpeg installation
