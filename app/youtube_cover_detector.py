@@ -30,30 +30,30 @@ def _generate_audio_from_youtube_id(youtube_id):
         wav_folder.mkdir(exist_ok=True, parents=True)
         os.chmod(str(wav_folder), 0o777)  # Give full permissions
         
-        # Get cookie file path from environment or use default
-        cookie_file = os.getenv('COOKIE_FILE', '/etc/secrets/youtube_cookies.txt')
-        
-        # Check if cookie file exists
-        if not os.path.exists(cookie_file):
-            print(f"Warning: Cookie file not found at {cookie_file}")
-            cookie_file = None
-        
         # Download with yt-dlp
         ydl_opts = {
             'format': 'bestaudio/best',
             'quiet': True,
             'no_warnings': True,
-            'cookiesfile': cookie_file if cookie_file else None,
+            'cookiefile': os.getenv('COOKIE_FILE', '/tmp/youtube_cookies.txt'),
+            'extract_audio': True,
+            'audio_format': 'mp3',
+            'audio_quality': 0,
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
             }],
             'outtmpl': f'{WAV_FOLDER}/{youtube_id}.%(ext)s',
-            'external_downloader': 'aria2c',
-            'socket_timeout': 30,
-            'retries': 10,
-            'fragment_retries': 10,
-            'ignoreerrors': True
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-us,en;q=0.5',
+                'Sec-Fetch-Mode': 'navigate'
+            },
+            'nocheckcertificate': True,
+            'ignoreerrors': True,
+            'no_warnings': True,
+            'geo_bypass': True
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:

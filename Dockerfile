@@ -2,17 +2,16 @@ FROM python:3.11-slim
 
 WORKDIR /code
 
-# Install system dependencies# Use HF's supported Chromium setup
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
-chromium-driver \
-chromium \
-ffmpeg \
-fonts-liberation \
-libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
-libxcomposite1 libxdamage1 libxrandr2 libgbm1 \
-libxshmfence1 libxss1 libasound2 libnspr4 xdg-utils \
-&& rm -rf /var/lib/apt/lists/*
-
+    ffmpeg \
+    chromium-driver \
+    chromium \
+    fonts-liberation \
+    libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
+    libxcomposite1 libxdamage1 libxrandr2 libgbm1 \
+    libxshmfence1 libxss1 libasound2 libnspr4 xdg-utils \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set up safe defaults for headless Chromium
 ENV CHROME_BIN=/usr/bin/chromium
