@@ -190,6 +190,7 @@ class YoutubeCoverDetector:
         
         # Load model
         model_path = 'pretrain_model/checkpoint.pt'
+        self.model = None  # Initialize as None
         if os.path.exists(model_path):
             print(f"Loading model from {model_path}...")
             try:
@@ -197,9 +198,9 @@ class YoutubeCoverDetector:
                 print("Model loaded successfully!")
             except Exception as e:
                 print(f"Error loading model: {str(e)}")
-                raise
         else:
             print(f"Model file not found at {model_path}")
+            print("Continuing without model for thumbnail functionality")
 
     def extract_features(self, audio_path):
         """Extract CQT features from audio file"""
@@ -256,11 +257,15 @@ class YoutubeCoverDetector:
 
     def _get_video_id(self, url):
         """Extract video ID from YouTube URL"""
-        if "youtu.be" in url:
-            return url.split("/")[-1]
-        elif "youtube.com" in url:
-            return url.split("v=")[1].split("&")[0]
-        return url
+        try:
+            if "youtu.be" in url:
+                return url.split("/")[-1].split("?")[0]
+            elif "youtube.com" in url:
+                return url.split("v=")[1].split("&")[0]
+            return url
+        except Exception as e:
+            print(f"Error extracting video ID from {url}: {e}")
+            return url
 
     def _get_thumbnail_url(self, video_id):
         """Get thumbnail URL for a video ID"""

@@ -117,6 +117,7 @@ from selenium.webdriver.chrome.service import Service
 # Import these after setting environment variable
 import joblib
 import librosa
+from fastapi.openapi.docs import get_swagger_ui_html
 
 # Use Render's persistent storage if available
 if os.getenv('RENDER'):
@@ -148,6 +149,7 @@ app.add_middleware(
     allow_origins=[
         "https://muoten-youtube-cover-detector4.hf.space",  # Hugging Face Space URL
         "http://localhost:8080",  # Local development
+        "https://yt-coverhunter.fly.dev",  # Fly.dev URL
         "*"  # Allow all origins for testing
     ],
     allow_credentials=True,
@@ -169,8 +171,11 @@ class VideoRequest(BaseModel):
     video_url1: str
     video_url2: str
 
+# Add API router
+api_router = APIRouter()  # Remove prefix to match existing frontend paths
+
 # Add API endpoints
-@app.post("/api/detect-cover")
+@api_router.post("/api/detect-cover")
 async def detect_cover(request: VideoRequest, background_tasks: BackgroundTasks):
     # Generate a unique task ID
     task_id = str(hash(request.video_url1 + request.video_url2 + str(asyncio.get_event_loop().time())))
@@ -187,18 +192,20 @@ async def detect_cover(request: VideoRequest, background_tasks: BackgroundTasks)
     
     return {"task_id": task_id, "status": "processing"}
 
-@app.get("/api/detection-status/{task_id}")
+@api_router.get("/api/detection-status/{task_id}")
 async def get_detection_status(task_id: str):
     if task_id not in detection_results:
         raise HTTPException(status_code=404, detail="Task not found")
     return detection_results[task_id]
 
-@app.post("/api/get-thumbnails")
+@api_router.post("/api/get-thumbnails")
 async def get_thumbnails(request: VideoRequest):
     try:
         detector = YoutubeCoverDetector()
         video_id1 = detector._get_video_id(request.video_url1)
         video_id2 = detector._get_video_id(request.video_url2)
+        
+        print(f"Getting thumbnails for videos: {video_id1}, {video_id2}")
         
         response_data = {
             "video_urls": {
@@ -211,6 +218,7 @@ async def get_thumbnails(request: VideoRequest):
             }
         }
         
+        print(f"Thumbnail response: {response_data}")
         return JSONResponse(
             content=response_data,
             headers={
@@ -283,6 +291,25 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 @app.get("/")
 async def read_root():
     return FileResponse(str(TEMPLATES_DIR / "index.html"))
+
+# Include API router
+app.include_router(api_router)
+
+@app.get("/api/docs")
+async def get_docs():
+    return get_swagger_ui_html(openapi_url="/openapi.json", title="API Documentation")
+
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "api_version": "1.0",
+        "endpoints": [
+            "/api/detect-cover",
+            "/api/detection-status/{task_id}",
+            "/api/get-thumbnails"
+        ]
+    }
 
 if __name__ == '__main__':
     import uvicorn
