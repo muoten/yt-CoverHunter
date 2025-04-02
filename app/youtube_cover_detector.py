@@ -3,7 +3,8 @@
 #import youtube_dl
 import os
 from app.parse_config import config
-from app.utils.logging_config import setup_logger
+import logging
+import sys
 import numpy as np
 # first method is GET /cover-detection?youtube_url1=...&youtube_url2=...
 # it will return a json with the result
@@ -25,6 +26,19 @@ WAV_FOLDER = config['WAV_FOLDER']
 
 CQT_FEAT_DIR = Path(WAV_FOLDER) / "cqt_feat"
 CQT_FEAT_DIR.mkdir(exist_ok=True, parents=True)
+
+def setup_logger(name):
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.DEBUG)
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+    return logger
 
 # Setup logger
 logger = setup_logger('youtube_cover_detector')
