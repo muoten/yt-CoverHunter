@@ -256,7 +256,10 @@
     <div id="preview" class="preview-container card" style="display: none;"></div>
 
     <script>
-        const API_URL = 'https://yt-coverhunter.fly.dev/api';
+        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const API_URL = isLocalhost
+            ? `http://${window.location.host}/api`  // Local development
+            : 'https://yt-coverhunter.fly.dev/api';  // Fly.dev URL
 
         console.log('Using API URL:', API_URL);
 
