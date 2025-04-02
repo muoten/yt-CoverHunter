@@ -35,35 +35,25 @@ def _generate_audio_from_youtube_id(youtube_id):
             'format': 'bestaudio/best',
             'quiet': True,
             'no_warnings': True,
-            'cookiefile': os.getenv('COOKIE_FILE', '/tmp/youtube_cookies.txt'),
-            'extract_audio': True,
-            'audio_format': 'mp3',
-            'audio_quality': 0,
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
             }],
             'outtmpl': f'{WAV_FOLDER}/{youtube_id}.%(ext)s',
-            'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'en-us,en;q=0.5',
-                'Sec-Fetch-Mode': 'navigate'
-            },
-            'nocheckcertificate': True,
-            'ignoreerrors': True,
-            'no_warnings': True,
-            'geo_bypass': True
+            'external_downloader': 'aria2c',
+            'socket_timeout': 30,
+            'retries': 10,
+            'fragment_retries': 10,
+            'ignoreerrors': True
         }
-        
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             try:
                 ydl.download([f'https://www.youtube.com/watch?v={youtube_id}'])
             except Exception as e:
                 print(f"Download failed with error: {str(e)}")
-                # Try alternate format if first attempt fails
-                ydl_opts['format'] = 'worstaudio/worst'
-                ydl.download([f'https://www.youtube.com/watch?v={youtube_id}'])
+            # Try alternate format if first attempt fails
+            ydl_opts['format'] = 'worstaudio/worst'
+            ydl.download([f'https://www.youtube.com/watch?v={youtube_id}'])
         
         # Convert to WAV
         mp3_path = f'{WAV_FOLDER}/{youtube_id}.mp3'

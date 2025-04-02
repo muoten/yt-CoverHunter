@@ -6,11 +6,14 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import time
 
+YT_DLP_USE_COOKIES = False
+
 # Configure environment before importing libraries that might use it
 os.environ["JOBLIB_TEMP_FOLDER"] = "/tmp"
 os.environ["XDG_CACHE_HOME"] = "/tmp/.cache"  # Ensure this is set to a writable directory
 os.makedirs(os.environ["XDG_CACHE_HOME"], exist_ok=True)
 os.chmod(os.environ["XDG_CACHE_HOME"], 0o777)
+
 
 def get_fresh_cookies():
     """Get fresh cookies from YouTube using Selenium"""
@@ -91,7 +94,8 @@ def setup_cookies():
     return None
 
 # Set up cookies on startup
-COOKIE_FILE = setup_cookies()
+if YT_DLP_USE_COOKIES:
+    COOKIE_FILE = setup_cookies()
 
 from app.parse_config import config
 import numpy as np
