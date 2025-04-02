@@ -6,4 +6,5 @@ PyYAML==6.0.2
 torch
 torchaudio==2.6.0
 uvicorn==0.34.0
-yt-dlp==2025.03.27
+yt-dlp==2025.03.31
+selenium==4.15.0
