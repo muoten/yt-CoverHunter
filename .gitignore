@@ -39,3 +39,17 @@ training/covers80/tSNE*
 sox.log
 data/covers80/test-only-work-ids.txt
 data/covers80/reference_embeddings.pkl
+
+__pycache__/
+*.pyc
+.env
+.venv/
+wav_files/
+*.wav
+__pycache__/
+*.pyc
+
+# Duplicates
+youtube-cover-detector/Dockerfile
+youtube-cover-detector/requirements.txt
+youtube-cover-detector/Dockerfile.bak

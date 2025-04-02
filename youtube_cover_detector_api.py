@@ -64,10 +64,8 @@ detection_results: Dict[str, Dict] = {}
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://muoten-youtube-cover-detector.hf.space",  # Hugging Face Space URL
+        "https://muoten-yt-cover-detector.hf.space",  # Hugging Face Space URL
         "http://localhost:7860",  # Local development
-        "https://yt-coverhunter.onrender.com",  # Render URL
-        "https://yt-coverhunter.onrender.com/",  # Render URL with trailing slash
         "*"  # Allow all origins for testing
     ],
     allow_credentials=True,
@@ -88,6 +86,29 @@ STATIC_DIR.mkdir(exist_ok=True)
 class VideoRequest(BaseModel):
     video_url1: str
     video_url2: str
+
+# Create cookies file from environment variable
+def setup_cookies():
+    cookies_content = os.environ.get('YOUTUBE_COOKIES', '')
+    print("Cookies environment variable present:", bool(cookies_content))  # Debug line
+    if cookies_content:
+        cookies_path = '/tmp/cookies.txt'
+        try:
+            with open(cookies_path, 'w') as f:
+                f.write(cookies_content)
+            print(f"Cookies file created at: {cookies_path}")  # Debug line
+            # Verify content
+            with open(cookies_path, 'r') as f:
+                print("First few lines of cookies file:", f.read()[:100])  # Debug line
+            return cookies_path
+        except Exception as e:
+            print(f"Error setting up cookies: {str(e)}")  # Debug line
+            return None
+    return None
+
+# Call this when your app starts
+cookies_file = setup_cookies()
+print(f"Cookies file path: {cookies_file}")  # Debug line
 
 # Add API endpoints
 @app.post("/api/detect-cover")
@@ -140,6 +161,10 @@ async def process_video(video_url1: str, video_url2: str, task_id: str):
         cleanup_old_files(WAV_DIR)
         
         detector = YoutubeCoverDetector()
+        detector.ydl_opts = {  # Set ydl_opts as an instance variable
+            'format': 'bestaudio/best',
+            'cookiefile': cookies_file,
+        }
         result = await detector.detect_cover(video_url1, video_url2)
         
         detection_results[task_id] = {
