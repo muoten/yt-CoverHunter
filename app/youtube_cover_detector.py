@@ -3,6 +3,7 @@
 #import youtube_dl
 import os
 from app.parse_config import config
+from app.utils.logging_config import setup_logger
 import numpy as np
 # first method is GET /cover-detection?youtube_url1=...&youtube_url2=...
 # it will return a json with the result
@@ -16,7 +17,7 @@ import librosa
 import torch
 import torchaudio
 from pathlib import Path
-import logging
+
 THRESHOLD = config['THRESHOLD']
 
 
@@ -25,15 +26,12 @@ WAV_FOLDER = config['WAV_FOLDER']
 CQT_FEAT_DIR = Path(WAV_FOLDER) / "cqt_feat"
 CQT_FEAT_DIR.mkdir(exist_ok=True, parents=True)
 
-# Configure logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# Setup logger
+logger = setup_logger('youtube_cover_detector')
 
 def _generate_audio_from_youtube_id(youtube_id):
     try:
+        logger.debug("Starting audio generation process")
         wav_folder = Path(WAV_FOLDER)
         wav_folder.mkdir(exist_ok=True, parents=True)
         os.chmod(str(wav_folder), 0o777)  # Give full permissions

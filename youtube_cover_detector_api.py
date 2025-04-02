@@ -1,4 +1,5 @@
 import os
+from app.utils.logging_config import setup_logger
 from fastapi import FastAPI, HTTPException, BackgroundTasks, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
@@ -25,11 +26,15 @@ import numpy as np
 
 YT_DLP_USE_COOKIES = False
 
+# Setup logger
+logger = setup_logger('api')
+
 # Configure environment before importing libraries that might use it
 os.environ["JOBLIB_TEMP_FOLDER"] = "/tmp"
 os.environ["XDG_CACHE_HOME"] = "/tmp/.cache"  # Ensure this is set to a writable directory
 os.makedirs(os.environ["XDG_CACHE_HOME"], exist_ok=True)
 os.chmod(os.environ["XDG_CACHE_HOME"], 0o777)
+logger.info("Environment configured")
 
 def get_fresh_cookies():
     """Get fresh cookies from YouTube using Selenium"""
@@ -252,6 +257,7 @@ async def get_thumbnails_options():
 
 async def process_video(video_url1: str, video_url2: str, task_id: str):
     try:
+        logger.info(f"Processing videos: {video_url1}, {video_url2}")
         # Clean up old files first
         cleanup_old_files(WAV_DIR)
         
