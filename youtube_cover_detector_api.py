@@ -1,10 +1,27 @@
 import os
+from fastapi import FastAPI, HTTPException, BackgroundTasks, APIRouter
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.openapi.docs import get_swagger_ui_html
+from pydantic import BaseModel
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.service import Service
 import time
+import asyncio
+from typing import Dict
+import pathlib
+import tempfile
+from pathlib import Path
+import requests
+import yt_dlp
+import joblib
+import librosa
+import numpy as np
 
 YT_DLP_USE_COOKIES = False
 
@@ -13,7 +30,6 @@ os.environ["JOBLIB_TEMP_FOLDER"] = "/tmp"
 os.environ["XDG_CACHE_HOME"] = "/tmp/.cache"  # Ensure this is set to a writable directory
 os.makedirs(os.environ["XDG_CACHE_HOME"], exist_ok=True)
 os.chmod(os.environ["XDG_CACHE_HOME"], 0o777)
-
 
 def get_fresh_cookies():
     """Get fresh cookies from YouTube using Selenium"""
@@ -97,27 +113,9 @@ def setup_cookies():
 if YT_DLP_USE_COOKIES:
     COOKIE_FILE = setup_cookies()
 
+# Import local modules after environment setup
 from app.parse_config import config
-import numpy as np
 from app.youtube_cover_detector import YoutubeCoverDetector, prepare_cover_detection, cover_detection
-from fastapi import FastAPI, HTTPException, BackgroundTasks
-from pydantic import BaseModel
-import asyncio
-from typing import Dict
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
-import pathlib
-import tempfile
-from pathlib import Path
-import requests
-import time
-import yt_dlp
-from selenium.webdriver.chrome.service import Service
-# Import these after setting environment variable
-import joblib
-import librosa
-from fastapi.openapi.docs import get_swagger_ui_html
 
 # Use Render's persistent storage if available
 if os.getenv('RENDER'):
@@ -310,6 +308,14 @@ async def health_check():
             "/api/get-thumbnails"
         ]
     }
+
+@app.get("/")
+async def root():
+    return {"status": "ok", "message": "YouTube Cover Detector API is running"}
+
+@app.get("/healthz")
+async def healthcheck():
+    return {"status": "healthy"}
 
 if __name__ == '__main__':
     import uvicorn
