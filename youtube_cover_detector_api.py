@@ -89,13 +89,22 @@ def get_youtube_cookies():
             with open(cookies_file_path, "w") as f:
                 f.write("# Netscape HTTP Cookie File\n")
                 for cookie in cookies:
-                    domain = cookie["domain"]
-                    name = cookie["name"]
-                    value = cookie["value"]
-                    path = cookie["path"]
+                    # Ensure all necessary attributes are present and convert to string
+                    domain = cookie.get("domain", "")
+                    name = cookie.get("name", "")
+                    value = cookie.get("value", "")
+                    path = cookie.get("path", "/")
                     secure = "TRUE" if cookie.get("secure") else "FALSE"
                     expiry = str(cookie.get("expiry", 9999999999))  # fallback
-                    f.write(f"{domain}\tTRUE\t{path}\t{secure}\t{expiry}\t{name}\t{value}\n")
+                    
+                    # Log cookie details
+                    print(f"Writing cookie: domain={domain}, name={name}, value={value}, path={path}, secure={secure}, expiry={expiry}")
+                    
+                    # Write to file if all necessary attributes are present
+                    if domain and name and value:
+                        f.write(f"{domain}\tTRUE\t{path}\t{secure}\t{expiry}\t{name}\t{value}\n")
+                    else:
+                        print(f"Skipping cookie with missing attributes: {cookie}")
             
             print("Cookies saved to /tmp/youtube_cookies.txt")
             
@@ -192,7 +201,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://muoten-youtube-cover-detector4.hf.space",  # Hugging Face Space URL
-        "http://localhost:7860",  # Local development
+        "http://localhost:8080",  # Local development
         "*"  # Allow all origins for testing
     ],
     allow_credentials=True,
@@ -331,4 +340,4 @@ async def read_root():
 
 if __name__ == '__main__':
     import uvicorn
-    uvicorn.run(app, host='0.0.0.0', port=7860) 
+    uvicorn.run(app, host='0.0.0.0', port=8080) 
