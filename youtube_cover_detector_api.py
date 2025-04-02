@@ -25,6 +25,7 @@ import joblib
 import librosa
 import numpy as np
 
+#First version that works! Though it takes more than 3 minutes to run in fly.dev free tier
 YT_DLP_USE_COOKIES = False
 
 def setup_logger(name):
