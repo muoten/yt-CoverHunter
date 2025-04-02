@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 WORKDIR /code
 
-# Install system dependencies and HF's supported Chromium setup
+# Install system dependencies# Use HF's supported Chromium setup
 RUN apt-get update && apt-get install -y \
 chromium-driver \
 chromium \
@@ -13,8 +13,6 @@ libxcomposite1 libxdamage1 libxrandr2 libgbm1 \
 libxshmfence1 libxss1 libasound2 libnspr4 xdg-utils \
 && rm -rf /var/lib/apt/lists/*
 
-# Verify ffmpeg installation
-RUN ffmpeg -version
 
 # Set up safe defaults for headless Chromium
 ENV CHROME_BIN=/usr/bin/chromium
@@ -30,25 +28,15 @@ RUN mkdir -p /code/static /code/templates
 
 # Copy the application
 COPY app/ /code/app/
-RUN mkdir -p /code/app/utils && touch /code/app/utils/__init__.py
 COPY youtube_cover_detector_api.py /code/
 COPY templates/ /code/templates/
 
 # Set Python path to include app directory
 ENV PYTHONPATH=/code
 ENV PYTHONUNBUFFERED=1
-ENV PORT=8080
-ENV HOST=0.0.0.0
-ENV PYTHONIOENCODING=utf-8
-ENV PYTHONBREAKPOINT=0
-ENV PYTHONASYNCIODEBUG=1
 
 RUN mkdir -p /tmp/.cache && chmod -R 777 /tmp/.cache
 
-# Create necessary directories with proper permissions
-RUN mkdir -p /tmp/youtube_cover_detector_api_wav && \
-    chmod -R 777 /tmp/youtube_cover_detector_api_wav
-
 # Run the application with logging
-CMD ["sh", "-c", "echo 'Starting container...' && PYTHONUNBUFFERED=1 uvicorn youtube_cover_detector_api:app --host $HOST --port $PORT --workers 1 --log-level debug --reload --access-log --use-colors"]
+CMD ["sh", "-c", "echo 'Starting container...' && uvicorn youtube_cover_detector_api:app --host 0.0.0.0 --port 8080"]
 #CMD ["python", "youtube_cover_detector_api.py"]
