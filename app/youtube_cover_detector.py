@@ -16,6 +16,7 @@ import librosa
 import torch
 import torchaudio
 from pathlib import Path
+import logging
 THRESHOLD = config['THRESHOLD']
 
 
@@ -24,17 +25,27 @@ WAV_FOLDER = config['WAV_FOLDER']
 CQT_FEAT_DIR = Path(WAV_FOLDER) / "cqt_feat"
 CQT_FEAT_DIR.mkdir(exist_ok=True, parents=True)
 
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
 def _generate_audio_from_youtube_id(youtube_id):
     try:
         wav_folder = Path(WAV_FOLDER)
         wav_folder.mkdir(exist_ok=True, parents=True)
         os.chmod(str(wav_folder), 0o777)  # Give full permissions
         
+        logger.info(f"Downloading video {youtube_id}...")
+        
         # Download with yt-dlp
         ydl_opts = {
             'format': 'bestaudio/best',
-            'quiet': True,
+            'quiet': False,
             'no_warnings': True,
+            'logger': logger,  # Add logger to yt-dlp
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
@@ -46,28 +57,49 @@ def _generate_audio_from_youtube_id(youtube_id):
             'fragment_retries': 10,
             'ignoreerrors': True
         }
+        
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             try:
+                logger.info(f"Attempting download with best quality...")
                 ydl.download([f'https://www.youtube.com/watch?v={youtube_id}'])
             except Exception as e:
-                print(f"Download failed with error: {str(e)}")
-            # Try alternate format if first attempt fails
-            ydl_opts['format'] = 'worstaudio/worst'
-            ydl.download([f'https://www.youtube.com/watch?v={youtube_id}'])
+                logger.error(f"Download failed with error: {str(e)}")
+                # Try alternate format if first attempt fails
+                logger.info(f"Retrying with worst quality...")
+                ydl_opts['format'] = 'worstaudio/worst'
+                ydl.download([f'https://www.youtube.com/watch?v={youtube_id}'])
         
         # Convert to WAV
         mp3_path = f'{WAV_FOLDER}/{youtube_id}.mp3'
         wav_path = f'{WAV_FOLDER}/{youtube_id}.wav'
         
-        os.system(f'ffmpeg -y -i "{mp3_path}" -ac 1 -ar 16000 "{wav_path}"')
+        logger.info(f"Converting {mp3_path} to {wav_path}...")
+        
+        # Check if mp3 exists
+        if not os.path.exists(mp3_path):
+            logger.error(f"Error: MP3 file not found at {mp3_path}")
+            logger.error(f"Directory contents: {os.listdir(WAV_FOLDER)}")
+            raise ValueError("MP3 file not found")
+        
+        # Use ffmpeg with more detailed output
+        ffmpeg_cmd = f'ffmpeg -y -i "{mp3_path}" -ac 1 -ar 16000 "{wav_path}" 2>&1'
+        logger.info(f"Running ffmpeg command: {ffmpeg_cmd}")
+        conversion_output = os.popen(ffmpeg_cmd).read()
+        logger.info(f"FFmpeg output: {conversion_output}")
         
         if not os.path.exists(wav_path):
+            logger.error(f"Error: WAV file not created at {wav_path}")
+            logger.error(f"Directory contents after conversion: {os.listdir(WAV_FOLDER)}")
             raise ValueError("Audio conversion failed")
-            
+        
+        logger.info(f"Successfully created WAV file: {wav_path}")
         return f"{youtube_id}.wav"
         
     except Exception as e:
-        print(f"Error in _generate_audio_from_youtube_id: {str(e)}")
+        logger.error(f"Error in _generate_audio_from_youtube_id: {str(e)}")
+        logger.error(f"Full error details: {type(e).__name__}: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise
 
 def _generate_dataset_txt_from_files(filename1, filename2):
