@@ -1,4 +1,10 @@
 import os
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import time
 
 # Configure environment before importing libraries that might use it
 os.environ["JOBLIB_TEMP_FOLDER"] = "/tmp"
@@ -9,17 +15,22 @@ os.chmod(os.environ["XDG_CACHE_HOME"], 0o777)
 def get_fresh_cookies():
     """Get fresh cookies from YouTube using Selenium"""
     print("Getting fresh YouTube cookies...")
+    print(f"Chrome binary: {os.environ.get('CHROME_BIN')}")
+    print(f"ChromeDriver path: {os.environ.get('CHROMEDRIVER_PATH')}")
     
     chrome_options = webdriver.ChromeOptions()
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
+    chrome_options.binary_location = os.environ.get('CHROME_BIN', '/usr/bin/chromium')
     
     try:
+        print("Initializing Chrome driver...")
         driver = webdriver.Chrome(options=chrome_options)
         
         # Visit YouTube with a popular video
+        print("Visiting YouTube...")
         driver.get("https://www.youtube.com/watch?v=dQw4w9WgXcQ")  # Never gonna give you up :)
         time.sleep(5)  # Wait for cookies
         
@@ -98,11 +109,6 @@ from pathlib import Path
 import requests
 import time
 import yt_dlp
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
 # Import these after setting environment variable
 import joblib
