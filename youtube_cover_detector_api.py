@@ -148,6 +148,7 @@ app.add_middleware(
         "https://muoten-youtube-cover-detector4.hf.space",  # Hugging Face Space URL
         "http://localhost:8080",  # Local development
         "https://yt-coverhunter.fly.dev",  # Fly.dev URL
+        "https://yt-coverhunter.fly.dev/api",  # Fly.dev API URL
         "*"  # Allow all origins for testing
     ],
     allow_credentials=True,
