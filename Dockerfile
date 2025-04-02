@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 WORKDIR /code
 
-# Install system dependencies# Use HF’s supported Chromium setup
+# Install system dependencies# Use HF's supported Chromium setup
 RUN apt-get update && apt-get install -y \
 chromium-driver \
 chromium \
@@ -38,5 +38,5 @@ ENV PYTHONUNBUFFERED=1
 RUN mkdir -p /tmp/.cache && chmod -R 777 /tmp/.cache
 
 # Run the application with logging
-CMD ["sh", "-c", "echo 'Starting container...' && uvicorn youtube_cover_detector_api:app --host 0.0.0.0 --port 7860"]
+CMD ["sh", "-c", "echo 'Starting container...' && uvicorn youtube_cover_detector_api:app --host 0.0.0.0 --port 8080"]
 #CMD ["python", "youtube_cover_detector_api.py"]
