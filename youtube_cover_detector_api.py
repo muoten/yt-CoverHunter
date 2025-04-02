@@ -27,6 +27,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.service import Service
 # Import these after setting environment variable
 import joblib
 import librosa
@@ -51,74 +52,69 @@ THRESHOLD = float(os.getenv('THRESHOLD', config.get('THRESHOLD', 0.3)))
 cookie_file_path = '/tmp/youtube_cookies.txt'
 
 def get_youtube_cookies():
-    # Create selenium cache directory in /tmp with timestamp to ensure uniqueness
-    timestamp = int(time.time())
-    chrome_data_dir = f'/tmp/chrome-data_{timestamp}'
-    chrome_cache_dir = f'/tmp/chrome-cache_{timestamp}'
-    
-    os.environ['XDG_CACHE_HOME'] = '/tmp/.cache'
-
-    chrome_options = webdriver.ChromeOptions()
-    chrome_options.add_argument(f"--user-data-dir={chrome_data_dir}")
-    chrome_options.add_argument(f"--disk-cache-dir={chrome_cache_dir}")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--disable-software-rasterizer")
-    chrome_options.add_argument("--headless=new")  # Optional, for debugging
-     
-    print(f"Chrome options configured with data dir: {chrome_data_dir} and cache dir: {chrome_cache_dir}")
-    
-    driver = None
-    try:
-        # Initialize driver
-        driver = webdriver.Chrome(options=chrome_options)
-        print("Chrome driver created successfully")
+    # Create a unique temporary directory for user data
+    with tempfile.TemporaryDirectory() as chrome_data_dir:
+        chrome_cache_dir = f'{chrome_data_dir}/cache'
+        os.makedirs(chrome_cache_dir, exist_ok=True)
         
-        # Visit YouTube and wait
-        print("Visiting YouTube...")
-        driver.get('https://www.youtube.com/watch?v=HzC2-GJu1Q8')
-        time.sleep(5)
+        chrome_options = webdriver.ChromeOptions()
+        chrome_options.add_argument(f"--user-data-dir={chrome_data_dir}")
+        chrome_options.add_argument(f"--disk-cache-dir={chrome_cache_dir}")
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--remote-debugging-port=9222")
+        chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
         
-        # Get all cookies
-        cookies = driver.get_cookies()
-        print(f"Found {len(cookies)} cookies")
+        print(f"Chrome options configured with data dir: {chrome_data_dir} and cache dir: {chrome_cache_dir}")
         
-        # Save cookies in Netscape format
-        with open("/tmp/youtube_cookies.txt", "w") as f:
-            f.write("# Netscape HTTP Cookie File\n")
-            for cookie in cookies:
-                domain = cookie["domain"]
-                name = cookie["name"]
-                value = cookie["value"]
-                path = cookie["path"]
-                secure = "TRUE" if cookie.get("secure") else "FALSE"
-                expiry = str(cookie.get("expiry", 9999999999))  # fallback
-                f.write(f"{domain}\tTRUE\t{path}\t{secure}\t{expiry}\t{name}\t{value}\n")
+        driver = None
+        try:
+            # Initialize driver
+            driver = webdriver.Chrome(service=Service("/usr/bin/chromedriver"), options=chrome_options)
+            print("Chrome driver created successfully")
+            
+            # Visit YouTube and wait
+            print("Visiting YouTube...")
+            driver.get('https://www.youtube.com/watch?v=HzC2-GJu1Q8')
+            time.sleep(5)
+            
+            # Get all cookies
+            cookies = driver.get_cookies()
+            print(f"Found {len(cookies)} cookies")
+            
+            # Save cookies in Netscape format
+            cookies_file_path = "/tmp/youtube_cookies.txt"
+            with open(cookies_file_path, "w") as f:
+                f.write("# Netscape HTTP Cookie File\n")
+                for cookie in cookies:
+                    domain = cookie["domain"]
+                    name = cookie["name"]
+                    value = cookie["value"]
+                    path = cookie["path"]
+                    secure = "TRUE" if cookie.get("secure") else "FALSE"
+                    expiry = str(cookie.get("expiry", 9999999999))  # fallback
+                    f.write(f"{domain}\tTRUE\t{path}\t{secure}\t{expiry}\t{name}\t{value}\n")
+            
+            print("Cookies saved to /tmp/youtube_cookies.txt")
+            
+            # Log the contents of the cookies file
+            with open(cookies_file_path, "r") as f:
+                print("Contents of /tmp/youtube_cookies.txt:")
+                print(f.read())
         
-        print("Cookies saved to /tmp/youtube_cookies.txt")
-    
-    except Exception as e:
-        print(f"Error in get_youtube_cookies: {e}")
-        raise
-    
-    finally:
-        # Clean up
-        if driver is not None:
-            try:
-                driver.quit()
-                print("Chrome driver closed successfully")
-            except Exception as e:
-                print(f"Error closing driver: {e}")
+        except Exception as e:
+            print(f"Error in get_youtube_cookies: {e}")
+            raise
         
-        # Clean up directories
-        for directory in [chrome_data_dir, chrome_cache_dir]:
-            try:
-                import shutil
-                shutil.rmtree(directory)
-                print(f"Cleaned up directory: {directory}")
-            except Exception as e:
-                print(f"Failed to clean up {directory}: {e}")
+        finally:
+            if driver is not None:
+                try:
+                    driver.quit()
+                    print("Chrome driver closed successfully")
+                except Exception as e:
+                    print(f"Error closing driver: {e}")
 
 print("Starting YouTube cookie collection with Selenium...")
 # Get cookies and write them to file
