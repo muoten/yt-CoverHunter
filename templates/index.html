@@ -256,9 +256,7 @@
     <div id="preview" class="preview-container card" style="display: none;"></div>
 
     <script>
-        const API_URL = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost'
-            ? `http://${window.location.host}/api`  // Local development
-            : 'https://yt-coverhunter.onrender.com/api';  // Render URL
+        const API_URL = 'https://yt-coverhunter.fly.dev/api';
 
         console.log('Using API URL:', API_URL);
 
@@ -277,7 +275,7 @@
             const previewDiv = document.getElementById('preview');
             
             // Debug API URL
-            console.log('Full API URL:', `${API_URL}/get-thumbnails`);
+            console.log('Full API URL:', API_URL + '/get-thumbnails');
             
             console.log('Attempting to detect cover with URLs:', { url1, url2 });
             
@@ -305,7 +303,7 @@
                 // Start loading previews immediately
                 previewDiv.innerHTML = '<p class="loading">Loading previews...</p>';
                 
-                const thumbnailResponse = await fetch(`${API_URL}/get-thumbnails`, {
+                const thumbnailResponse = await fetch(API_URL + '/get-thumbnails', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -358,7 +356,7 @@
                 }, 100);
 
                 // Start the detection process
-                const startResponse = await fetch(`${API_URL}/detect-cover`, {
+                const startResponse = await fetch(API_URL + '/detect-cover', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -377,7 +375,7 @@
                 
                 // Poll for results
                 while (true) {
-                    const statusResponse = await fetch(`${API_URL}/detection-status/${task_id}`);
+                    const statusResponse = await fetch(API_URL + '/detection-status/' + task_id);
                     const statusData = await statusResponse.json();
                     
                     if (statusData.status === 'completed') {
