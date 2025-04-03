@@ -316,6 +316,28 @@ class YoutubeCoverDetector:
         """Get thumbnail URL for a video ID"""
         return f"https://img.youtube.com/vi/{video_id}/0.jpg"
 
+async def download_audio(youtube_id):
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'quiet': True,
+        'external_downloader': 'aria2c',  # Use aria2c for faster downloads
+        'external_downloader_args': ['-x', '16', '-k', '1M'],  # Use 16 connections
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+        }],
+        'outtmpl': f'{WAV_FOLDER}/{youtube_id}.%(ext)s',
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        await asyncio.to_thread(ydl.download, [f'https://www.youtube.com/watch?v={youtube_id}'])
+
+async def process_videos(video_ids):
+    tasks = [download_audio(video_id) for video_id in video_ids]
+    await asyncio.gather(*tasks)
+
+# Usage
+# asyncio.run(process_videos(['video_id1', 'video_id2']))
+
 if __name__ == '__main__':
     DEBUG = True
     if DEBUG:
