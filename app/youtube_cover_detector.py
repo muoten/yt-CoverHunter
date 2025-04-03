@@ -318,18 +318,14 @@ class YoutubeCoverDetector:
 
 async def download_audio(youtube_id):
     ydl_opts = {
-        #'format': 'bestaudio/best',
+        'format': 'bestaudio/best',
         'quiet': True,
         'external_downloader': 'aria2c',  # Use aria2c for faster downloads
         'external_downloader_args': ['-x', '16', '-k', '1M'],  # Use 16 connections
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
-            # Consider removing preferredquality if it doesn't help
         }],
-        'postprocessor_args': [
-            '-ss', '0', '-t', '10'  # Ensure this is correctly limiting duration
-        ],
         'outtmpl': f'{WAV_FOLDER}/{youtube_id}.%(ext)s',
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
