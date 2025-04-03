@@ -94,7 +94,8 @@ def _generate_audio_from_youtube_id(youtube_id):
             raise ValueError("MP3 file not found")
         
         # Use ffmpeg with more detailed output
-        ffmpeg_cmd = f'ffmpeg -y -i "{mp3_path}" -ac 1 -ar 16000 "{wav_path}" 2>&1'
+        # extract first 10 seconds
+        ffmpeg_cmd = f'ffmpeg -y -i "{mp3_path}" -ac 1 -ar 16000 -t 10 "{wav_path}" 2>&1'
         logger.info(f"Running ffmpeg command: {ffmpeg_cmd}")
         conversion_output = os.popen(ffmpeg_cmd).read()
         logger.info(f"FFmpeg output: {conversion_output}")
