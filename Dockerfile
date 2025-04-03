@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 WORKDIR /code
 
-# Install system dependencies# Use HF's supported Chromium setup
+# Install system dependencies and HF's supported Chromium setup
 RUN apt-get update && apt-get install -y \
     chromium-driver \
     chromium \
@@ -26,6 +26,8 @@ RUN apt-get update && apt-get install -y \
     xdg-utils \
     && rm -rf /var/lib/apt/lists/*
 
+# Verify installation
+RUN ffmpeg -version && aria2c --version && chromium --version
 
 # Set up safe defaults for headless Chromium
 ENV CHROME_BIN=/usr/bin/chromium
