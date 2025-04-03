@@ -325,7 +325,11 @@ async def download_audio(youtube_id):
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
+            'preferredquality': '192',  # Use a lower quality if acceptable
         }],
+        'postprocessor_args': [
+            '-ss', '0', '-t', '10'  # Limit to first 10 seconds
+        ],
         'outtmpl': f'{WAV_FOLDER}/{youtube_id}.%(ext)s',
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
