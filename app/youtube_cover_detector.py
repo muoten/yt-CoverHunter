@@ -21,6 +21,7 @@ from pathlib import Path
 import csv
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+import io
 
 THRESHOLD = config['THRESHOLD']
 
@@ -254,8 +255,15 @@ class YoutubeCoverDetector:
 
             # Load the model with explicit error handling
             try:
-                self.model = torch.load(model_path, map_location='cpu')
+                # Read the file into a BytesIO buffer first
+                with open(model_path, 'rb') as f:
+                    buffer = io.BytesIO(f.read())
+                
+                # Load model from buffer
+                buffer.seek(0)
+                self.model = torch.load(buffer, map_location='cpu')
                 logger.info("Model loaded successfully")
+                
             except Exception as e:
                 logger.error(f"Error loading model: {str(e)}")
                 raise

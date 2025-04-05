@@ -500,26 +500,28 @@
                 detectionResultDiv.innerHTML = '';  // Only clear the result text, not the thumbnails
                 
                 let startTime = Date.now();
-                const totalExpectedTime = 60; // Changed to 60 seconds
+                const totalExpectedTime = 60; // 60 seconds total
+                const updateInterval = 10000; // Update every 10 seconds
                 
                 progressInterval = setInterval(() => {
                     let elapsed = (Date.now() - startTime) / 1000;
                     let timeRemaining = Math.max(0, Math.ceil(totalExpectedTime - elapsed));
+                    timeRemaining = Math.ceil(timeRemaining / 10) * 10; // Round to nearest 10 seconds
                     
-                    if (elapsed <= 10) {  // First phase: 0-10s
-                        let percent = (elapsed / 10) * 10;
+                    if (elapsed <= 10) {
+                        let percent = 10; // First phase
                         updateProgress(percent, 'Videos still not analyzed. Start processing...', timeRemaining);
-                    } else if (elapsed <= 30) {  // Second phase: 10-30s
-                        let percent = 10 + ((elapsed - 10) / 20) * 30;
+                    } else if (elapsed <= 30) {
+                        let percent = 40; // Second phase
                         updateProgress(percent, 'Downloading files...', timeRemaining);
-                    } else if (elapsed <= 50) {  // Third phase: 30-50s
-                        let percent = 40 + ((elapsed - 30) / 20) * 30;
+                    } else if (elapsed <= 50) {
+                        let percent = 70; // Third phase
                         updateProgress(percent, 'Extracting audio features...', timeRemaining);
-                    } else if (elapsed <= 60) {  // Final phase: 50-60s
-                        let percent = 70 + ((elapsed - 50) / 10) * 30;
+                    } else if (elapsed <= 60) {
+                        let percent = 90; // Final phase
                         updateProgress(percent, 'Generating embeddings...', timeRemaining);
                     }
-                }, 100);
+                }, updateInterval);
 
                 const startResponse = await fetch(API_URL + '/check-if-cover', {
                     method: 'POST',
