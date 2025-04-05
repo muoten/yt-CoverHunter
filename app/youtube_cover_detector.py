@@ -247,7 +247,7 @@ class YoutubeCoverDetector:
         print(f"Using device: {self.device}")
         
         # Load model
-        model_path = 'pretrain_model/checkpoint.pt'
+        model_path = os.getenv('MODEL_PATH', '/code/pretrain_model/checkpoints/checkpoint.pt')
         self.model = None  # Initialize as None
         if os.path.exists(model_path):
             print(f"Loading model from {model_path}...")

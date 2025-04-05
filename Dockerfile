@@ -13,6 +13,8 @@ libxcomposite1 libxdamage1 libxrandr2 libgbm1 \
 libxshmfence1 libxss1 libasound2 libnspr4 xdg-utils \
 libavcodec-extra \
 aria2 \
+git-lfs \
+wget \
 && rm -rf /var/lib/apt/lists/*
 
 # Verify ffmpeg installation
@@ -27,18 +29,34 @@ ENV XDG_CACHE_HOME=/tmp/.cache
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create necessary directories
-RUN mkdir -p /code/static /code/templates
+# Create necessary directories with proper permissions
+RUN mkdir -p /code/pretrain_model/checkpoints && \
+    mkdir -p /code/static && \
+    mkdir -p /code/templates && \
+    mkdir -p /code/data/covers80_testset && \
+    mkdir -p /tmp/youtube_cover_detector_api_wav && \
+    chmod -R 777 /tmp/youtube_cover_detector_api_wav
 
-# Copy the application
+# Download the model checkpoint from HuggingFace only if it doesn't exist
+RUN if [ ! -f /code/pretrain_model/checkpoints/checkpoint.pt ]; then \
+        echo "Downloading model checkpoint..." && \
+        wget -O /code/pretrain_model/checkpoints/checkpoint.pt \
+            https://huggingface.co/muoten/yt-coverhunter/resolve/main/checkpoint.pt; \
+    else \
+        echo "Model checkpoint already exists, skipping download"; \
+    fi
+
+# Copy the application files
 COPY app/ /code/app/
 COPY tools/ /code/tools/
 COPY src/ /code/src/
-RUN mkdir -p /code/app/utils && touch /code/app/utils/__init__.py
 COPY youtube_cover_detector_api.py /code/
 COPY templates/ /code/templates/
 COPY data/ /code/data/
 COPY pretrain_model/ /code/pretrain_model/
+
+# Make sure the model file exists in the correct location
+RUN test -f /code/pretrain_model/checkpoints/checkpoint.pt || echo "Warning: Model file not found"
 
 # Set Python path to include app directory
 ENV PYTHONPATH=/code
@@ -50,10 +68,6 @@ ENV PYTHONBREAKPOINT=0
 ENV PYTHONASYNCIODEBUG=1
 
 RUN mkdir -p /tmp/.cache && chmod -R 777 /tmp/.cache
-
-# Create necessary directories with proper permissions
-RUN mkdir -p /tmp/youtube_cover_detector_api_wav && \
-    chmod -R 777 /tmp/youtube_cover_detector_api_wav
 
 # Create a directory for persistent data
 RUN mkdir -p /data
