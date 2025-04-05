@@ -88,6 +88,7 @@
             margin-top: 20px;
         }
 
+        /* Base button styles */
         button {
             flex: 1;
             padding: 10px 20px;
@@ -97,6 +98,14 @@
             font-weight: 500;
             cursor: pointer;
             transition: transform 0.1s ease, opacity 0.1s ease;
+        }
+
+        /* Common styles for the Check if Cover button */
+        .main-content > button {
+            width: 200px;
+            margin: 20px auto;
+            display: block;
+            flex: none;
         }
 
         button:active {
@@ -128,6 +137,7 @@
             flex: 1;
             text-align: center;
             position: relative;
+            cursor: pointer;
         }
 
         .thumbnail-container img {
@@ -145,18 +155,6 @@
             margin-top: 12px;
             font-weight: 500;
             color: #444;
-        }
-
-        .youtube-link {
-            color: #e62117;
-            text-decoration: none;
-            font-weight: 500;
-            margin-top: 8px;
-            display: inline-block;
-        }
-
-        .youtube-link:hover {
-            text-decoration: underline;
         }
 
         .progress-container {
@@ -378,6 +376,7 @@
             transform: scale(1.1);
         }
 
+        /* Desktop styles */
         @media (min-width: 768px) {
             .container {
                 flex-direction: row;
@@ -412,6 +411,7 @@
             }
         }
 
+        /* Mobile styles */
         @media (max-width: 767px) {
             h1 {
                 font-size: 1.8em;
@@ -462,11 +462,10 @@
             }
 
             .button-container button {
-                width: 100%;
+                width: 160px;  /* Slightly smaller on mobile */
+                margin: 15px auto;
             }
-        }
 
-        @media (max-width: 767px) {
             .feedback-btn {
                 padding: 8px 12px;
                 font-size: 14px;
@@ -524,6 +523,37 @@
             width: 120px;
             height: 90px;
             object-fit: cover;
+        }
+
+        /* Update YouTube play button overlay styles */
+        .play-button-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 68px;
+            height: 48px;
+            background-color: rgba(230, 33, 23, 0.8);
+            border-radius: 14px;
+            cursor: pointer;
+            opacity: 0.9;
+            transition: opacity 0.2s;
+        }
+
+        .play-button-overlay::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 55%;
+            transform: translate(-50%, -50%);
+            border-style: solid;
+            border-width: 12px 0 12px 20px;
+            border-color: transparent transparent transparent white;
+        }
+
+        .thumbnail-container:hover .play-button-overlay {
+            background-color: rgba(200, 0, 0, 0.9);
+            opacity: 1;
         }
     </style>
 </head>
@@ -902,9 +932,9 @@
                     thumbnailContainer.innerHTML = `
                         <img src="https://img.youtube.com/vi/${videoId}/0.jpg" alt="Video ${containerNumber} Thumbnail">
                         <div class="video-preview" id="player-${containerNumber}"></div>
+                        <div class="play-button-overlay"></div>
                         <button class="audio-toggle" onclick="toggleAudio(${containerNumber}, event)">🔇</button>
                         <div class="thumbnail-label">Video ${containerNumber}</div>
-                        <div><a href="https://www.youtube.com/watch?v=${videoId}" target="_blank" class="youtube-link">Watch on YouTube</a></div>
                     `;
 
                     let player = null;
