@@ -363,45 +363,31 @@ def read_compared_videos():
                 compared_videos.append(row)
     except FileNotFoundError:
         logger.debug("CSV file not found. Creating a new file with headers.")
-        # Create the file with headers if it doesn't exist
         with open(CSV_FILE, mode='w', newline='') as file:
-            writer = csv.DictWriter(file, fieldnames=['url1', 'url2', 'result', 'score'])
+            writer = csv.DictWriter(file, fieldnames=['url1', 'url2', 'result', 'score', 'feedback'])
             writer.writeheader()
     return compared_videos
 
 def write_compared_video(url1, url2, result, score):
     logger.debug(f"Starting write_compared_video with params: {url1}, {url2}, {result}, {score}")
-    
-    # Read existing entries to check for duplicates
-    existing_entries = read_compared_videos()
-    
-    # Check if this combination of URLs already exists
-    for entry in existing_entries:
-        if (entry['url1'] == url1 and entry['url2'] == url2) or \
-           (entry['url1'] == url2 and entry['url2'] == url1):
-            logger.debug(f"Duplicate entry found, updating result: {url1}, {url2}")
-            # Remove the existing entry (we'll rewrite the entire file)
-            existing_entries.remove(entry)
-            break
-    
-    # Add the new entry
-    new_entry = {'url1': url1, 'url2': url2, 'result': result, 'score': score}
-    existing_entries.append(new_entry)
-    
     try:
-        # Write all entries back to the file
-        with open(CSV_FILE, mode='w', newline='') as file:
-            writer = csv.DictWriter(file, fieldnames=['url1', 'url2', 'result', 'score'])
-            writer.writeheader()
-            writer.writerows(existing_entries)
-            logger.debug(f"Successfully wrote updated CSV with {len(existing_entries)} entries")
+        with open(CSV_FILE, mode='a', newline='') as file:
+            writer = csv.DictWriter(file, fieldnames=['url1', 'url2', 'result', 'score', 'feedback'])
+            if file.tell() == 0:
+                writer.writeheader()
+                logger.debug("Writing header to CSV file")
+            row_data = {
+                'url1': url1, 
+                'url2': url2, 
+                'result': result, 
+                'score': score,
+                'feedback': ''
+            }
+            writer.writerow(row_data)
+            logger.debug(f"Successfully wrote row to CSV: {row_data}")
     except Exception as e:
         logger.error(f"Error writing to CSV: {e}")
         raise
-    
-    # Log CSV contents after writing
-    log_csv_contents()
-    logger.debug("Finished write_compared_video function")
 
 def log_csv_contents():
     logger.debug("##### Current contents of the CSV file #####")
@@ -497,6 +483,33 @@ async def reset_compared_videos_endpoint():
         return JSONResponse(content={"status": "success", "message": "Compared videos have been reset"})
     except Exception as e:
         logger.error(f"Error in reset_compared_videos_endpoint: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/feedback")
+async def submit_feedback(request: Request):
+    data = await request.json()
+    url1 = data['url1']
+    url2 = data['url2']
+    feedback = data['feedback']
+    
+    try:
+        # Read current CSV
+        videos = read_compared_videos()
+        
+        # Update the feedback for matching entry
+        for video in videos:
+            if ((video['url1'] == url1 and video['url2'] == url2) or 
+                (video['url1'] == url2 and video['url2'] == url1)):
+                video['feedback'] = feedback
+        
+        # Write back to CSV
+        with open(CSV_FILE, mode='w', newline='') as file:
+            writer = csv.DictWriter(file, fieldnames=['url1', 'url2', 'result', 'score', 'feedback'])
+            writer.writeheader()
+            writer.writerows(videos)
+        
+        return {"status": "success"}
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == '__main__':

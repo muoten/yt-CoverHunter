@@ -352,6 +352,61 @@
             font-size: 1.2em;
             margin-bottom: 10px;
         }
+        /* Update feedback button styles */
+        .feedback-buttons {
+            display: flex;
+            gap: 4px;
+            margin-top: 4px;
+        }
+
+        .feedback-btn {
+            padding: 2px 6px;
+            font-size: 0.8em;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: all 0.2s;
+            opacity: 0.6;  /* Default state is faded */
+        }
+
+        .feedback-btn.ok {
+            background-color: #e8f5e9;
+            border-color: #81c784;
+            color: #2e7d32;
+        }
+
+        .feedback-btn.not-ok {
+            background-color: #ffebee;
+            border-color: #e57373;
+            color: #c62828;
+        }
+
+        .feedback-btn:hover {
+            opacity: 0.8;
+        }
+
+        .feedback-btn.selected {
+            opacity: 1;  /* Full opacity for selected */
+            font-weight: bold;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            transform: scale(1.05);  /* Slightly larger */
+        }
+
+        .feedback-btn:not(.selected) {
+            background-color: #f5f5f5;  /* Grayed out when not selected */
+            border-color: #ddd;
+            color: #666;
+        }
+
+        .accuracy-stat {
+            background-color: #f5f5f5;
+            padding: 8px 12px;
+            border-radius: 4px;
+            margin-bottom: 12px;
+            font-size: 0.9em;
+            color: #666;
+            border-left: 3px solid #2196F3;
+        }
     </style>
 </head>
 <body>
@@ -406,8 +461,8 @@
             const url2 = document.getElementById('video2').value;
             const resultDiv = document.getElementById('result');
             const progressContainer = document.getElementById('progress-container');
-            const previewDiv = document.getElementById('preview');
             const detectionResultDiv = document.getElementById('detection-result');
+            const previewDiv = document.getElementById('preview');
             
             if (!url1 || !url2) {
                 alert('Please enter both YouTube URLs');
@@ -430,46 +485,14 @@
                     detectionResultDiv.innerHTML = `
                         <h3>Result:</h3>
                         <p><strong>Result:</strong> ${existingResult.result}</p>
-                        <p><strong>Score:</strong> ${existingResult.score}</p>
+                        <p><strong>Confidence:</strong> ${getConfidenceText(existingResult.score)}</p>
                     `;
-
-                    // Still show thumbnails
-                    const thumbnailResponse = await fetch(API_URL + '/get-thumbnails', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            video_url1: url1,
-                            video_url2: url2
-                        })
-                    });
-
-                    if (thumbnailResponse.ok) {
-                        const thumbnailData = await thumbnailResponse.json();
-                        previewDiv.innerHTML = `
-                            <div class="thumbnails">
-                                <div class="thumbnail-container">
-                                    <img src="${thumbnailData.thumbnails.video1}" alt="Video 1 Thumbnail">
-                                    <div class="thumbnail-label">Video 1</div>
-                                    <div><a href="${thumbnailData.video_urls.url1}" target="_blank" class="youtube-link">Watch on YouTube</a></div>
-                                </div>
-                                <div class="thumbnail-container">
-                                    <img src="${thumbnailData.thumbnails.video2}" alt="Video 2 Thumbnail">
-                                    <div class="thumbnail-label">Video 2</div>
-                                    <div><a href="${thumbnailData.video_urls.url2}" target="_blank" class="youtube-link">Watch on YouTube</a></div>
-                                </div>
-                            </div>
-                        `;
-                    }
                     return;
                 }
 
                 // If not found in CSV, continue with full analysis
                 progressContainer.style.display = 'block';
-                resultDiv.style.display = 'none';
-                detectionResultDiv.innerHTML = '';
+                detectionResultDiv.innerHTML = '';  // Only clear the result text, not the thumbnails
                 
                 let startTime = Date.now();
                 progressInterval = setInterval(() => {
@@ -489,41 +512,6 @@
                         updateProgress(percent, 'Generating embeddings...');
                     }
                 }, 100);
-
-                previewDiv.innerHTML = '<p class="loading">Loading previews...</p>';
-
-                const thumbnailResponse = await fetch(API_URL + '/get-thumbnails', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        video_url1: url1,
-                        video_url2: url2
-                    })
-                });
-
-                if (!thumbnailResponse.ok) {
-                    const fullResponse = await thumbnailResponse.text();
-                    throw new Error(`API Error (${thumbnailResponse.status}): ${fullResponse.substring(0, 200)}...`);
-                }
-
-                const thumbnailData = await thumbnailResponse.json();
-                previewDiv.innerHTML = `
-                    <div class="thumbnails">
-                        <div class="thumbnail-container">
-                            <img src="${thumbnailData.thumbnails.video1}" alt="Video 1 Thumbnail">
-                            <div class="thumbnail-label">Video 1</div>
-                            <div><a href="${thumbnailData.video_urls.url1}" target="_blank" class="youtube-link">Watch on YouTube</a></div>
-                        </div>
-                        <div class="thumbnail-container">
-                            <img src="${thumbnailData.thumbnails.video2}" alt="Video 2 Thumbnail">
-                            <div class="thumbnail-label">Video 2</div>
-                            <div><a href="${thumbnailData.video_urls.url2}" target="_blank" class="youtube-link">Watch on YouTube</a></div>
-                        </div>
-                    </div>
-                `;
 
                 const startResponse = await fetch(API_URL + '/check-if-cover', {
                     method: 'POST',
@@ -553,7 +541,7 @@
                     detectionResultDiv.innerHTML = `
                         <h3>Result:</h3>
                         <p><strong>Result:</strong> ${result}</p>
-                        <p><strong>Score:</strong> ${score}</p>
+                        <p><strong>Confidence:</strong> ${getConfidenceText(score)}</p>
                     `;
                 }, 1000);
                 
@@ -561,9 +549,8 @@
                 console.error('Error details:', error);
                 clearInterval(progressInterval);
                 progressContainer.style.display = 'none';
-                resultDiv.style.display = 'block';  // Show for error message
+                resultDiv.style.display = 'block';
                 detectionResultDiv.innerHTML = `<p class="error">Error: ${error.message}</p>`;
-                previewDiv.innerHTML = '';
             }
         }
 
@@ -577,14 +564,48 @@
             }
         }
 
+        function getConfidenceText(score) {
+            const numScore = parseFloat(score);
+            let confidence = "High (>90%)";
+            if (numScore >= 0.2 && numScore <= 0.4) {
+                confidence = "Medium (>60%)";
+            }
+            return confidence;
+        }
+
+        function calculateAccuracy(comparedVideos) {
+            let okCount = 0;
+            let totalFeedback = 0;
+            
+            comparedVideos.forEach(video => {
+                if (video.feedback === 'ok' || video.feedback === 'not-ok') {
+                    totalFeedback++;
+                    if (video.feedback === 'ok') {
+                        okCount++;
+                    }
+                }
+            });
+            
+            if (totalFeedback === 0) return null;
+            return ((okCount / totalFeedback) * 100).toFixed(1);
+        }
+
         function renderComparedVideos(comparedVideos) {
             const videoListElement = document.getElementById('compared-videos-list');
             videoListElement.innerHTML = ''; // Clear existing list
 
+            // Calculate and display accuracy
+            const accuracy = calculateAccuracy(comparedVideos);
+            const accuracyHtml = accuracy !== null ? 
+                `<p class="accuracy-stat">Estimated accuracy: ${accuracy}% (${comparedVideos.filter(v => v.feedback).length} samples)</p>` : 
+                '<p class="accuracy-stat">No feedback yet</p>';
+
+            videoListElement.innerHTML = accuracyHtml;
+
             comparedVideos.forEach(video => {
-                // Extract video IDs from URLs
                 const videoId1 = extractVideoId(video.url1);
                 const videoId2 = extractVideoId(video.url2);
+                const confidence = getConfidenceText(video.score);
                 
                 const videoItem = document.createElement('div');
                 videoItem.className = 'compared-video-entry';
@@ -598,10 +619,58 @@
                         </a>
                     </div>
                     <p><strong>Result:</strong> ${video.result}</p>
-                    <p><strong>Score:</strong> ${video.score}</p>
+                    <p><strong>Confidence:</strong> ${confidence} (${video.score})</p>
+                    <div class="feedback-buttons">
+                        <button class="feedback-btn ok ${video.feedback === 'ok' ? 'selected' : ''}" 
+                                onclick="submitFeedback('${video.url1}', '${video.url2}', 'ok', this)">
+                            ✓ OK
+                        </button>
+                        <button class="feedback-btn not-ok ${video.feedback === 'not-ok' ? 'selected' : ''}"
+                                onclick="submitFeedback('${video.url1}', '${video.url2}', 'not-ok', this)">
+                            ✗ Not OK
+                        </button>
+                    </div>
                 `;
                 videoListElement.appendChild(videoItem);
             });
+        }
+
+        async function submitFeedback(url1, url2, feedback, buttonElement) {
+            try {
+                // Remove selected class from both buttons in this group
+                const buttonsGroup = buttonElement.parentElement;
+                buttonsGroup.querySelectorAll('.feedback-btn').forEach(btn => {
+                    btn.classList.remove('selected');
+                });
+                
+                // Add selected class to clicked button
+                buttonElement.classList.add('selected');
+
+                // Send feedback to server
+                const response = await fetch('/api/feedback', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        url1,
+                        url2,
+                        feedback
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to submit feedback');
+                }
+
+                // Optional: Show a brief success message
+                console.log('Feedback submitted successfully');
+
+            } catch (error) {
+                console.error('Error submitting feedback:', error);
+                // Remove selected class if submission failed
+                buttonElement.classList.remove('selected');
+            }
         }
 
         function extractVideoId(url) {
@@ -612,6 +681,71 @@
 
         // Call the function to fetch and render the list on page load
         fetchComparedVideos();
+
+        // Remove both existing DOMContentLoaded event listeners and replace with this one
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize variables
+            const video1Input = document.getElementById('video1');
+            const video2Input = document.getElementById('video2');
+            const previewDiv = document.getElementById('preview');
+            const resultDiv = document.getElementById('result');
+
+            // Initialize preview div structure
+            previewDiv.innerHTML = `
+                <div class="thumbnails">
+                    <div class="thumbnail-container" id="preview-thumbnail-1"></div>
+                    <div class="thumbnail-container" id="preview-thumbnail-2"></div>
+                </div>
+            `;
+
+            // Show result div and load initial thumbnails
+            resultDiv.style.display = 'block';
+            setTimeout(() => {  // Add small delay to ensure DOM is ready
+                loadThumbnail(video1Input.value, 1);
+                loadThumbnail(video2Input.value, 2);
+            }, 100);
+
+            // Update thumbnails when URLs change
+            video1Input.addEventListener('input', debounce(() => loadThumbnail(video1Input.value, 1), 500));
+            video2Input.addEventListener('input', debounce(() => loadThumbnail(video2Input.value, 2), 500));
+
+            // Fetch initial compared videos
+            fetchComparedVideos();
+        });
+
+        // Simplified loadThumbnail function
+        async function loadThumbnail(url, containerNumber) {
+            if (!url) return;
+            
+            try {
+                const videoId = extractVideoId(url);
+                if (!videoId) return;
+
+                const thumbnailContainer = document.getElementById(`preview-thumbnail-${containerNumber}`);
+                if (thumbnailContainer) {
+                    thumbnailContainer.innerHTML = `
+                        <img src="https://img.youtube.com/vi/${videoId}/0.jpg" alt="Video ${containerNumber} Thumbnail">
+                        <div class="thumbnail-label">Video ${containerNumber}</div>
+                        <div><a href="https://www.youtube.com/watch?v=${videoId}" target="_blank" class="youtube-link">Watch on YouTube</a></div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error loading thumbnail:', error);
+            }
+        }
+
+        // Debounce function to prevent too many updates
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
     </script>
 </body>
 </html> 

@@ -242,23 +242,27 @@ def _debug_cover_detection():
 
 class YoutubeCoverDetector:
     def __init__(self):
-        print("Initializing YoutubeCoverDetector...")
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        print(f"Using device: {self.device}")
-        
-        # Load model
-        model_path = os.getenv('MODEL_PATH', '/code/pretrain_model/checkpoints/checkpoint.pt')
-        self.model = None  # Initialize as None
-        if os.path.exists(model_path):
-            print(f"Loading model from {model_path}...")
+        """Initialize the model"""
+        try:
+            # Load model
+            model_path = os.getenv('MODEL_PATH', '/code/pretrain_model/checkpoints/checkpoint.pt')
+            logger.info(f"Attempting to load model from: {model_path}")
+            
+            if not os.path.exists(model_path):
+                logger.error(f"Model file not found at {model_path}")
+                raise FileNotFoundError(f"Model file not found at {model_path}")
+
+            # Load the model with explicit error handling
             try:
-                self.model = torch.load(model_path, map_location=self.device)
-                print("Model loaded successfully!")
+                self.model = torch.load(model_path, map_location='cpu')
+                logger.info("Model loaded successfully")
             except Exception as e:
-                print(f"Error loading model: {str(e)}")
-        else:
-            print(f"Model file not found at {model_path}")
-            print("Continuing without model for thumbnail functionality")
+                logger.error(f"Error loading model: {str(e)}")
+                raise
+            
+        except Exception as e:
+            logger.error(f"Error in YoutubeCoverDetector initialization: {str(e)}")
+            raise
 
     def extract_features(self, audio_path):
         """Extract CQT features from audio file"""
