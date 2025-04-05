@@ -32,9 +32,10 @@ from app.youtube_cover_detector import (
     _generate_dataset_txt_from_files,
     cover_detection as youtube_cover_detection
 )
+from app.parse_config import config
 
 #First version that works! Though it takes more than 3 minutes to run in fly.dev free tier
-YT_DLP_USE_COOKIES = True
+YT_DLP_USE_COOKIES = os.getenv('YT_DLP_USE_COOKIES', False)
 
 def setup_logger():
     logger = logging.getLogger('api')
@@ -151,7 +152,6 @@ if YT_DLP_USE_COOKIES:
     COOKIE_FILE = setup_cookies()
 
 # Import local modules after environment setup
-from app.parse_config import config
 from app.youtube_cover_detector import YoutubeCoverDetector, prepare_cover_detection, cover_detection
 
 # Use Render's persistent storage if available
