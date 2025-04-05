@@ -501,12 +501,11 @@
                 
                 let startTime = Date.now();
                 const totalExpectedTime = 60; // 60 seconds total
-                const updateInterval = 10000; // Update every 10 seconds
+                const updateInterval = 1000; // Update every 1 second
                 
                 progressInterval = setInterval(() => {
                     let elapsed = (Date.now() - startTime) / 1000;
                     let timeRemaining = Math.max(0, Math.ceil(totalExpectedTime - elapsed));
-                    timeRemaining = Math.ceil(timeRemaining / 10) * 10; // Round to nearest 10 seconds
                     
                     if (elapsed <= 10) {
                         let percent = 10; // First phase
