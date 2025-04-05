@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>YouTube Cover Detector</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
     <script src="https://www.youtube.com/iframe_api"></script>
     <style>
@@ -809,7 +810,7 @@
             }
         }
 
-        // Update the loadThumbnail function
+        // Update the loadThumbnail function to handle URL changes
         async function loadThumbnail(url, containerNumber) {
             if (!url) return;
             
@@ -819,6 +820,13 @@
 
                 const thumbnailContainer = document.getElementById(`preview-thumbnail-${containerNumber}`);
                 if (thumbnailContainer) {
+                    // Store current player state
+                    const existingPlayer = YT.get(`player-${containerNumber}`);
+                    const wasPlaying = existingPlayer && 
+                        existingPlayer.getPlayerState && 
+                        existingPlayer.getPlayerState() === YT.PlayerState.PLAYING;
+
+                    // Update HTML content
                     thumbnailContainer.innerHTML = `
                         <img src="https://img.youtube.com/vi/${videoId}/0.jpg" alt="Video ${containerNumber} Thumbnail">
                         <div class="video-preview" id="player-${containerNumber}"></div>
@@ -829,26 +837,33 @@
 
                     let player = null;
 
-                    // Initialize player when hovering
-                    thumbnailContainer.addEventListener('mouseenter', () => {
-                        if (!player) {
-                            player = new YT.Player(`player-${containerNumber}`, {
-                                videoId: videoId,
-                                playerVars: {
-                                    autoplay: 1,
-                                    controls: 0,
-                                    mute: 1,  // Start muted
-                                    playsinline: 1,
-                                    rel: 0,
-                                    showinfo: 0,
-                                    start: 0
-                                },
-                                events: {
-                                    'onReady': (event) => {
+                    // Function to create new player
+                    const createPlayer = () => {
+                        player = new YT.Player(`player-${containerNumber}`, {
+                            videoId: videoId,
+                            playerVars: {
+                                autoplay: wasPlaying ? 1 : 0,  // Autoplay only if previous was playing
+                                controls: 0,
+                                mute: 1,
+                                playsinline: 1,
+                                rel: 0,
+                                showinfo: 0,
+                                start: 0
+                            },
+                            events: {
+                                'onReady': (event) => {
+                                    if (wasPlaying) {
                                         event.target.playVideo();
                                     }
                                 }
-                            });
+                            }
+                        });
+                    };
+
+                    // Initialize player when hovering
+                    thumbnailContainer.addEventListener('mouseenter', () => {
+                        if (!player) {
+                            createPlayer();
                         } else {
                             player.playVideo();
                         }
@@ -872,6 +887,11 @@
                             }
                         }
                     });
+
+                    // If mouse is currently over the container, create player immediately
+                    if (thumbnailContainer.matches(':hover')) {
+                        createPlayer();
+                    }
                 }
             } catch (error) {
                 console.error('Error loading thumbnail:', error);
