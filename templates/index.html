@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>YouTube Cover Detector</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <script src="https://www.youtube.com/iframe_api"></script>
     <style>
         body { 
             font-family: 'Roboto', sans-serif;
@@ -108,6 +109,7 @@
         .thumbnail-container {
             flex: 1;
             text-align: center;
+            position: relative;
         }
 
         .thumbnail-container img {
@@ -407,6 +409,49 @@
             color: #666;
             border-left: 3px solid #2196F3;
         }
+
+        .video-preview {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+        }
+
+        .thumbnail-container:hover .video-preview {
+            display: block;
+        }
+
+        .thumbnail-container:hover img {
+            visibility: hidden;
+        }
+
+        .audio-toggle {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            cursor: pointer;
+            z-index: 20;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .audio-toggle.unmuted {
+            background: rgba(255,0,0,0.7);
+        }
+
+        .audio-toggle:hover {
+            transform: scale(1.1);
+        }
     </style>
 </head>
 <body>
@@ -500,26 +545,30 @@
                 detectionResultDiv.innerHTML = '';  // Only clear the result text, not the thumbnails
                 
                 let startTime = Date.now();
-                const totalExpectedTime = 60; // 60 seconds total
-                const updateInterval = 1000; // Update every 1 second
+                const totalExpectedTime = 40; // Changed to 40 seconds total
+                const updateInterval = 1000; // Update every second
                 
                 progressInterval = setInterval(() => {
                     let elapsed = (Date.now() - startTime) / 1000;
                     let timeRemaining = Math.max(0, Math.ceil(totalExpectedTime - elapsed));
                     
-                    if (elapsed <= 10) {
-                        let percent = 10; // First phase
-                        updateProgress(percent, 'Videos still not analyzed. Start processing...', timeRemaining);
+                    // Calculate progress percentage based on elapsed time
+                    let percent = Math.min(95, (elapsed / totalExpectedTime) * 100);
+                    
+                    // Update status message based on progress
+                    let status;
+                    if (elapsed <= 5) {
+                        status = 'Initializing...';
+                    } else if (elapsed <= 15) {
+                        status = 'Downloading files...';
                     } else if (elapsed <= 30) {
-                        let percent = 40; // Second phase
-                        updateProgress(percent, 'Downloading files...', timeRemaining);
-                    } else if (elapsed <= 50) {
-                        let percent = 70; // Third phase
-                        updateProgress(percent, 'Extracting audio features...', timeRemaining);
-                    } else if (elapsed <= 60) {
-                        let percent = 90; // Final phase
-                        updateProgress(percent, 'Generating embeddings...', timeRemaining);
+                        status = 'Extracting audio features...';
+                    } else {
+                        status = 'Generating embeddings...';
                     }
+                    
+                    updateProgress(percent, status, timeRemaining);
+                    
                 }, updateInterval);
 
                 const startResponse = await fetch(API_URL + '/check-if-cover', {
@@ -725,7 +774,42 @@
             fetchComparedVideos();
         });
 
-        // Simplified loadThumbnail function
+        // Add this function to check if player is ready
+        function waitForPlayer(player) {
+            return new Promise((resolve) => {
+                if (player && player.getPlayerState) {
+                    resolve(player);
+                } else {
+                    setTimeout(() => waitForPlayer(player).then(resolve), 100);
+                }
+            });
+        }
+
+        // Update the toggle audio function
+        async function toggleAudio(containerNumber, event) {
+            event.stopPropagation(); // Prevent triggering mouseenter/leave
+            const player = YT.get(`player-${containerNumber}`);
+            const button = event.target;
+            
+            try {
+                const readyPlayer = await waitForPlayer(player);
+                if (readyPlayer) {
+                    if (readyPlayer.isMuted()) {
+                        readyPlayer.unMute();
+                        button.textContent = '🔊';
+                        button.classList.add('unmuted');
+                    } else {
+                        readyPlayer.mute();
+                        button.textContent = '🔇';
+                        button.classList.remove('unmuted');
+                    }
+                }
+            } catch (error) {
+                console.error('Error toggling audio:', error);
+            }
+        }
+
+        // Update the loadThumbnail function
         async function loadThumbnail(url, containerNumber) {
             if (!url) return;
             
@@ -737,9 +821,57 @@
                 if (thumbnailContainer) {
                     thumbnailContainer.innerHTML = `
                         <img src="https://img.youtube.com/vi/${videoId}/0.jpg" alt="Video ${containerNumber} Thumbnail">
+                        <div class="video-preview" id="player-${containerNumber}"></div>
+                        <button class="audio-toggle" onclick="toggleAudio(${containerNumber}, event)">🔇</button>
                         <div class="thumbnail-label">Video ${containerNumber}</div>
                         <div><a href="https://www.youtube.com/watch?v=${videoId}" target="_blank" class="youtube-link">Watch on YouTube</a></div>
                     `;
+
+                    let player = null;
+
+                    // Initialize player when hovering
+                    thumbnailContainer.addEventListener('mouseenter', () => {
+                        if (!player) {
+                            player = new YT.Player(`player-${containerNumber}`, {
+                                videoId: videoId,
+                                playerVars: {
+                                    autoplay: 1,
+                                    controls: 0,
+                                    mute: 1,  // Start muted
+                                    playsinline: 1,
+                                    rel: 0,
+                                    showinfo: 0,
+                                    start: 0
+                                },
+                                events: {
+                                    'onReady': (event) => {
+                                        event.target.playVideo();
+                                    }
+                                }
+                            });
+                        } else {
+                            player.playVideo();
+                        }
+                    });
+
+                    // Pause when mouse leaves
+                    thumbnailContainer.addEventListener('mouseleave', () => {
+                        if (player && player.pauseVideo) {
+                            player.pauseVideo();
+                        }
+                    });
+
+                    // Add click handler for unmuting
+                    thumbnailContainer.addEventListener('click', async () => {
+                        if (player && player.unMute) {
+                            try {
+                                player.unMute();
+                                player.setVolume(50);
+                            } catch (error) {
+                                console.error('Error unmuting:', error);
+                            }
+                        }
+                    });
                 }
             } catch (error) {
                 console.error('Error loading thumbnail:', error);
