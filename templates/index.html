@@ -546,7 +546,7 @@
                 detectionResultDiv.innerHTML = '';  // Only clear the result text, not the thumbnails
                 
                 let startTime = Date.now();
-                const totalExpectedTime = 40; // Changed to 40 seconds total
+                const totalExpectedTime = 50; // Changed to 50 seconds total
                 const updateInterval = 1000; // Update every second
                 
                 progressInterval = setInterval(() => {
@@ -558,11 +558,11 @@
                     
                     // Update status message based on progress
                     let status;
-                    if (elapsed <= 5) {
+                    if (elapsed <= 8) {
                         status = 'Initializing...';
-                    } else if (elapsed <= 15) {
+                    } else if (elapsed <= 20) {
                         status = 'Downloading files...';
-                    } else if (elapsed <= 30) {
+                    } else if (elapsed <= 35) {
                         status = 'Extracting audio features...';
                     } else {
                         status = 'Generating embeddings...';
