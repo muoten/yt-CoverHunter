@@ -449,11 +449,16 @@
 
         console.log('Using API URL:', API_URL);
 
-        function updateProgress(percent, status) {
+        function updateProgress(percent, status, timeRemaining = null) {
             const progressBar = document.getElementById('progress-bar');
             const progressStatus = document.getElementById('progress-status');
             progressBar.style.width = `${percent}%`;
-            progressStatus.textContent = status;
+            
+            let statusText = status;
+            if (timeRemaining !== null) {
+                statusText += ` (estimated ${timeRemaining} seconds remaining)`;
+            }
+            progressStatus.textContent = statusText;
         }
 
         async function detectCover() {
@@ -495,21 +500,24 @@
                 detectionResultDiv.innerHTML = '';  // Only clear the result text, not the thumbnails
                 
                 let startTime = Date.now();
+                const totalExpectedTime = 60; // Changed to 60 seconds
+                
                 progressInterval = setInterval(() => {
                     let elapsed = (Date.now() - startTime) / 1000;
+                    let timeRemaining = Math.max(0, Math.ceil(totalExpectedTime - elapsed));
                     
-                    if (elapsed <= 5) {
-                        let percent = (elapsed / 5) * 10;
-                        updateProgress(percent, 'Videos still not analyzed. Start processing...');
-                    } else if (elapsed <= 15) {
-                        let percent = 10 + ((elapsed - 5) / 10) * 30;
-                        updateProgress(percent, 'Downloading files...');
-                    } else if (elapsed <= 25) {
-                        let percent = 40 + ((elapsed - 15) / 10) * 30;
-                        updateProgress(percent, 'Extracting audio features...');
-                    } else if (elapsed <= 30) {
-                        let percent = 70 + ((elapsed - 25) / 5) * 20;
-                        updateProgress(percent, 'Generating embeddings...');
+                    if (elapsed <= 10) {  // First phase: 0-10s
+                        let percent = (elapsed / 10) * 10;
+                        updateProgress(percent, 'Videos still not analyzed. Start processing...', timeRemaining);
+                    } else if (elapsed <= 30) {  // Second phase: 10-30s
+                        let percent = 10 + ((elapsed - 10) / 20) * 30;
+                        updateProgress(percent, 'Downloading files...', timeRemaining);
+                    } else if (elapsed <= 50) {  // Third phase: 30-50s
+                        let percent = 40 + ((elapsed - 30) / 20) * 30;
+                        updateProgress(percent, 'Extracting audio features...', timeRemaining);
+                    } else if (elapsed <= 60) {  // Final phase: 50-60s
+                        let percent = 70 + ((elapsed - 50) / 10) * 30;
+                        updateProgress(percent, 'Generating embeddings...', timeRemaining);
                     }
                 }, 100);
 
@@ -619,7 +627,7 @@
                         </a>
                     </div>
                     <p><strong>Result:</strong> ${video.result}</p>
-                    <p><strong>Confidence:</strong> ${confidence} (${video.score})</p>
+                    <p><strong>Confidence:</strong> ${confidence}</p>
                     <div class="feedback-buttons">
                         <button class="feedback-btn ok ${video.feedback === 'ok' ? 'selected' : ''}" 
                                 onclick="submitFeedback('${video.url1}', '${video.url2}', 'ok', this)">
@@ -663,7 +671,10 @@
                     throw new Error('Failed to submit feedback');
                 }
 
-                // Optional: Show a brief success message
+                // Fetch updated data and refresh the display
+                const comparedVideos = await fetch('/api/compared-videos').then(r => r.json());
+                renderComparedVideos(comparedVideos);
+
                 console.log('Feedback submitted successfully');
 
             } catch (error) {

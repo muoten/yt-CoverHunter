@@ -37,15 +37,6 @@ RUN mkdir -p /code/pretrain_model/checkpoints && \
     mkdir -p /tmp/youtube_cover_detector_api_wav && \
     chmod -R 777 /tmp/youtube_cover_detector_api_wav
 
-# Download the model checkpoint from HuggingFace only if it doesn't exist
-RUN if [ ! -f /code/pretrain_model/checkpoints/checkpoint.pt ]; then \
-        echo "Downloading model checkpoint..." && \
-        wget -O /code/pretrain_model/checkpoints/checkpoint.pt \
-            https://huggingface.co/muoten/yt-coverhunter/resolve/main/checkpoint.pt; \
-    else \
-        echo "Model checkpoint already exists, skipping download"; \
-    fi
-
 # Copy the application files
 COPY app/ /code/app/
 COPY tools/ /code/tools/
