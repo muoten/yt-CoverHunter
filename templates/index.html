@@ -313,8 +313,8 @@
         }
         .compared-thumbnails {
             display: flex;
-            gap: 10px;
-            margin-bottom: 10px;
+            gap: 4px;
+            margin-bottom: 6px;
         }
         .thumbnail-link {
             flex: 1;
@@ -325,29 +325,32 @@
             transform: scale(1.05);
         }
         .thumbnail-link img {
-            width: 100%;
-            border-radius: 4px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            width: 80px;
+            height: 60px;
+            object-fit: cover;
+            border-radius: 3px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
         }
         .compared-video-entry {
             border-bottom: 1px solid #eee;
-            padding: 15px 0;
+            padding: 8px 0;
+            font-size: 0.85em;
         }
         .compared-video-entry:last-child {
             border-bottom: none;
         }
         .compared-video-entry p {
-            margin: 5px 0;
+            margin: 2px 0;
         }
         .compared-videos {
-            flex: 1;
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            max-height: 80vh;
-            overflow-y: auto;
-            min-width: 300px;  /* Ensure minimum width for thumbnails */
+            flex: 0.6;
+            min-width: 200px;
+            max-width: 250px;
+            padding: 15px;
+        }
+        .compared-videos h2 {
+            font-size: 1.2em;
+            margin-bottom: 10px;
         }
     </style>
 </head>
@@ -378,7 +381,7 @@
         </div>
         
         <div class="compared-videos">
-            <h2>Previously Compared Videos</h2>
+            <h2>Last analyzed videos</h2>
             <div id="compared-videos-list"></div>
         </div>
     </div>
