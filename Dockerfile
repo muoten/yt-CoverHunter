@@ -32,9 +32,13 @@ RUN mkdir -p /code/static /code/templates
 
 # Copy the application
 COPY app/ /code/app/
+COPY tools/ /code/tools/
+COPY src/ /code/src/
 RUN mkdir -p /code/app/utils && touch /code/app/utils/__init__.py
 COPY youtube_cover_detector_api.py /code/
 COPY templates/ /code/templates/
+COPY data/ /code/data/
+COPY pretrain_model/ /code/pretrain_model/
 
 # Set Python path to include app directory
 ENV PYTHONPATH=/code
@@ -50,6 +54,13 @@ RUN mkdir -p /tmp/.cache && chmod -R 777 /tmp/.cache
 # Create necessary directories with proper permissions
 RUN mkdir -p /tmp/youtube_cover_detector_api_wav && \
     chmod -R 777 /tmp/youtube_cover_detector_api_wav
+
+# Create a directory for persistent data
+RUN mkdir -p /data
+VOLUME /data
+
+# Update the environment variable for the CSV file location
+ENV CSV_FILE=/data/compared_videos.csv
 
 # Run the application with logging
 CMD ["sh", "-c", "echo 'Starting container...' && PYTHONUNBUFFERED=1 uvicorn youtube_cover_detector_api:app --host $HOST --port $PORT --workers 1 --log-level debug --reload --access-log --use-colors"]

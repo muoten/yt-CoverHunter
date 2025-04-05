@@ -18,6 +18,9 @@ import librosa
 import torch
 import torchaudio
 from pathlib import Path
+import csv
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 
 THRESHOLD = config['THRESHOLD']
 
@@ -27,10 +30,15 @@ WAV_FOLDER = config['WAV_FOLDER']
 CQT_FEAT_DIR = Path(WAV_FOLDER) / "cqt_feat"
 CQT_FEAT_DIR.mkdir(exist_ok=True, parents=True)
 
-def setup_logger(name):
-    logger = logging.getLogger(name)
+CSV_FILE = '/tmp/compared_videos.csv'
+
+# Initialize FastAPI app
+app = FastAPI()
+
+def setup_logger():
+    logger = logging.getLogger('api')
     logger.setLevel(logging.DEBUG)
-    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.DEBUG)
     formatter = logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -40,8 +48,7 @@ def setup_logger(name):
     logger.addHandler(console_handler)
     return logger
 
-# Setup logger
-logger = setup_logger('youtube_cover_detector')
+logger = setup_logger()
 
 def _generate_audio_from_youtube_id(youtube_id):
     try:
@@ -121,7 +128,7 @@ def _generate_dataset_txt_from_files(filename1, filename2):
     for i,filename in enumerate([filename1, filename2]):
         entry = {
             "perf": filename,
-            "wav": WAV_FOLDER + "/" + filename,  # Path can be MP3 or WAV
+            "wav": filename,  # Path can be MP3 or WAV
             "dur_s": 0,
             "work": filename,
             "version": filename,
@@ -142,12 +149,13 @@ def _generate_embeddings_from_filepaths(audio_path1, audio_path2):
 	#MODEL_FOLDER = WAV_FOLDER
 	os.system(f"mkdir -p {WAV_FOLDER}")
 	#os.system(f"cp {WAV_FOLDER}/sp_aug.txt {WAV_FOLDER}/sp_aug.txt.bak")
-	os.system(f"rm {WAV_FOLDER}/*.txt")
+	os.system(f"rm -f {WAV_FOLDER}/*.txt")
 	_generate_dataset_txt_from_files(audio_path1, audio_path2)
 	#os.system(f"touch {WAV_FOLDER}/sp_aug.txt")
 	os.system(f"cp {WAV_FOLDER}/dataset.txt {WAV_FOLDER}/sp_aug.txt")
-	os.system(f"rm -r {WAV_FOLDER}/cqt_feat/")
-	os.system(f"rm -r {WAV_FOLDER}/sp_wav/")
+	os.system(f"rm -rf {WAV_FOLDER}/cqt_feat/")
+	os.system(f"rm -rf {WAV_FOLDER}/sp_wav/")
+	os.system(f"cp {COVERHUNTER_FOLDER}data/covers80_testset/hparams.yaml {WAV_FOLDER}/hparams.yaml")
 
 	
 	# first we get features with coverhunter
@@ -167,6 +175,7 @@ def _generate_embeddings_from_filepaths(audio_path1, audio_path2):
 	return embeddings
 
 def _cosine_distance(vec1, vec2):
+    logger.debug(f"Calculating cosine distance between vectors: {vec1} and {vec2}")
     from numpy import dot
     from numpy.linalg import norm
     return 1 - dot(vec1, vec2) / (norm(vec1) * norm(vec2))
@@ -182,8 +191,7 @@ def prepare_cover_detection(youtube_url1, youtube_url2):
 
     return audio1, audio2
     
-def cover_detection(audio1, audio2):
-
+""" def cover_detection(audio1, audio2):
     # generate the embeddings
     embeddings = _generate_embeddings_from_filepaths(audio1, audio2)
     # embeddings is a dictionary
@@ -191,16 +199,21 @@ def cover_detection(audio1, audio2):
     keys = list(embeddings.keys())
     # get the embeddings
     embeddings1 = embeddings[keys[0]]
-    print(embeddings1)
-    print(len(embeddings1))
-
     embeddings2 = embeddings[keys[1]]
-    print(embeddings2)
     # get the distance between the embeddings
     distance = _cosine_distance(embeddings1, embeddings2)
-    print(distance)
 
-    return distance
+    # Determine if the videos are covers
+    is_cover = distance < THRESHOLD
+    result = "Cover" if is_cover else "Not Cover"
+
+    distance = round(distance, 2)
+    # Log and write the result to the CSV
+    logger.debug(f"Distance: {distance}, Result: {result}")
+    
+    write_compared_video(audio1, audio2, result, distance)
+
+    return distance """
 
 
 def _debug_cover_detection():
@@ -338,7 +351,127 @@ async def process_videos(video_ids):
 # Usage
 # asyncio.run(process_videos(['video_id1', 'video_id2']))
 
+def read_compared_videos():
+    compared_videos = []
+    try:
+        with open(CSV_FILE, mode='r', newline='') as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                compared_videos.append(row)
+    except FileNotFoundError:
+        logger.debug("CSV file not found. Creating a new file with headers.")
+        with open(CSV_FILE, mode='w', newline='') as file:
+            writer = csv.DictWriter(file, fieldnames=['url1', 'url2', 'result', 'score'])
+            writer.writeheader()
+    return compared_videos
+
+def write_compared_video(url1, url2, result, score):
+    logger.debug(f"Starting write_compared_video with params: {url1}, {url2}, {result}, {score}")
+    try:
+        with open(CSV_FILE, mode='a', newline='') as file:
+            writer = csv.DictWriter(file, fieldnames=['url1', 'url2', 'result', 'score'])
+            if file.tell() == 0:
+                writer.writeheader()
+                logger.debug("Writing header to CSV file")
+            row_data = {'url1': url1, 'url2': url2, 'result': result, 'score': score}
+            writer.writerow(row_data)
+            logger.debug(f"Successfully wrote row to CSV: {row_data}")
+    except Exception as e:
+        logger.error(f"Error writing to CSV: {e}")
+        raise
+    
+    # Log CSV contents after writing
+    log_csv_contents()
+    logger.debug("Finished write_compared_video function")
+
+def log_csv_contents():
+    logger.debug("##### Current contents of the CSV file #####")
+    try:
+        compared_videos = read_compared_videos()
+        if not compared_videos:
+            logger.debug("CSV file is empty")
+        else:
+            for video in compared_videos:
+                logger.debug(f"CSV entry: {video}")
+    except Exception as e:
+        logger.error(f"Error reading CSV contents: {e}")
+    logger.debug("############################################")
+
+class VideoURLs(BaseModel):
+    youtube_url1: str
+    youtube_url2: str
+
+def get_result_from_csv(url1: str, url2: str):
+    """Get the result from CSV if it exists"""
+    compared_videos = read_compared_videos()
+    for video in compared_videos:
+        if ((video['url1'] == url1 and video['url2'] == url2) or 
+            (video['url1'] == url2 and video['url2'] == url1)):
+            return {
+                "distance": float(video['score']),
+                "is_cover": video['result'] == "Cover"
+            }
+    return None
+
+def cover_detection(youtube_url1: str, youtube_url2: str):
+    logger.debug(f"Received request for URLs: {youtube_url1} and {youtube_url2}")
+    
+    if not youtube_url1 or not youtube_url2:
+        raise HTTPException(status_code=400, detail="Both youtube_url1 and youtube_url2 parameters are required")
+
+    try:
+        # First check if we already have the result
+        existing_result = get_result_from_csv(youtube_url1, youtube_url2)
+        if existing_result is not None:
+            logger.debug("Found existing result in CSV, returning cached result")
+            return existing_result
+
+        # If not found in CSV, perform the full analysis
+        logger.debug("No existing result found, performing full analysis")
+        wav_path1 = f"/tmp/youtube_cover_detector_api_wav/{extract_video_id(youtube_url1)}.wav"
+        wav_path2 = f"/tmp/youtube_cover_detector_api_wav/{extract_video_id(youtube_url2)}.wav"
+        
+        # Generate embeddings and calculate distance
+        logger.debug("Generating embeddings and calculating distance...")
+        embeddings = _generate_embeddings_from_filepaths(wav_path1, wav_path2)
+        keys = list(embeddings.keys())
+        embeddings1 = embeddings[keys[0]]
+        embeddings2 = embeddings[keys[1]]
+        distance = _cosine_distance(embeddings1, embeddings2)
+        logger.debug(f"Distance: {distance}")
+        distance = float(distance)
+        distance = round(distance, 2)
+        logger.debug(f"Rounded distance: {distance}")
+        
+        # Determine if it's a cover
+        is_cover = distance < THRESHOLD
+        result = "Cover" if is_cover else "Not Cover"
+        
+        # Write to CSV
+        logger.debug(f"Writing result to CSV: Distance={distance}, Result={result}")
+        write_compared_video(youtube_url1, youtube_url2, result, distance)
+        
+        return {
+            "distance": distance,
+            "is_cover": is_cover
+        }
+    except Exception as e:
+        logger.error(f"Error in cover detection: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+def extract_video_id(url):
+    """Extract video ID from YouTube URL"""
+    try:
+        if "youtu.be" in url:
+            return url.split("/")[-1].split("?")[0]
+        elif "youtube.com" in url:
+            return url.split("v=")[1].split("&")[0]
+        return url
+    except Exception as e:
+        logger.error(f"Error extracting video ID from {url}: {e}")
+        return url
+
+# Ensure the FastAPI app runs
 if __name__ == '__main__':
-    DEBUG = True
-    if DEBUG:
-        _debug_cover_detection()
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8080)

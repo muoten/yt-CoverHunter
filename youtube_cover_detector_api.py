@@ -1,7 +1,7 @@
 import os
 import logging
 import sys
-from fastapi import FastAPI, HTTPException, BackgroundTasks, APIRouter
+from fastapi import FastAPI, HTTPException, BackgroundTasks, APIRouter, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -24,9 +24,17 @@ import yt_dlp
 import joblib
 import librosa
 import numpy as np
+import csv
+from app.youtube_cover_detector import (
+    extract_video_id, 
+    _cosine_distance, 
+    _generate_embeddings_from_filepaths,
+    _generate_dataset_txt_from_files,
+    cover_detection as youtube_cover_detection
+)
 
 #First version that works! Though it takes more than 3 minutes to run in fly.dev free tier
-YT_DLP_USE_COOKIES = False
+YT_DLP_USE_COOKIES = True
 
 def setup_logger(name):
     logger = logging.getLogger(name)
@@ -157,6 +165,10 @@ print("Starting application...")
 
 # Create the FastAPI app
 app = FastAPI()
+
+# Set up logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Store results in memory
 detection_results: Dict[str, Dict] = {}
@@ -304,8 +316,8 @@ def cleanup_old_files(directory: Path, max_age_hours: int = 1):
             except Exception as e:
                 print(f"Failed to delete {file_path}: {e}")
 
-# Serve static files
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+# Mount the static files directory
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Serve index.html at root
 @app.get("/")
@@ -338,6 +350,154 @@ async def root():
 @app.get("/healthz")
 async def healthcheck():
     return {"status": "healthy"}
+
+# Update the CSV_FILE path
+CSV_FILE = os.getenv('CSV_FILE', '/data/compared_videos.csv')
+
+def read_compared_videos():
+    compared_videos = []
+    try:
+        with open(CSV_FILE, mode='r', newline='') as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                compared_videos.append(row)
+    except FileNotFoundError:
+        logger.debug("CSV file not found. Creating a new file with headers.")
+        # Create the file with headers if it doesn't exist
+        with open(CSV_FILE, mode='w', newline='') as file:
+            writer = csv.DictWriter(file, fieldnames=['url1', 'url2', 'result', 'score'])
+            writer.writeheader()
+    return compared_videos
+
+def write_compared_video(url1, url2, result, score):
+    logger.debug(f"Starting write_compared_video with params: {url1}, {url2}, {result}, {score}")
+    
+    # Read existing entries to check for duplicates
+    existing_entries = read_compared_videos()
+    
+    # Check if this combination of URLs already exists
+    for entry in existing_entries:
+        if (entry['url1'] == url1 and entry['url2'] == url2) or \
+           (entry['url1'] == url2 and entry['url2'] == url1):
+            logger.debug(f"Duplicate entry found, updating result: {url1}, {url2}")
+            # Remove the existing entry (we'll rewrite the entire file)
+            existing_entries.remove(entry)
+            break
+    
+    # Add the new entry
+    new_entry = {'url1': url1, 'url2': url2, 'result': result, 'score': score}
+    existing_entries.append(new_entry)
+    
+    try:
+        # Write all entries back to the file
+        with open(CSV_FILE, mode='w', newline='') as file:
+            writer = csv.DictWriter(file, fieldnames=['url1', 'url2', 'result', 'score'])
+            writer.writeheader()
+            writer.writerows(existing_entries)
+            logger.debug(f"Successfully wrote updated CSV with {len(existing_entries)} entries")
+    except Exception as e:
+        logger.error(f"Error writing to CSV: {e}")
+        raise
+    
+    # Log CSV contents after writing
+    log_csv_contents()
+    logger.debug("Finished write_compared_video function")
+
+def log_csv_contents():
+    logger.debug("##### Current contents of the CSV file #####")
+    compared_videos = read_compared_videos()
+    for video in compared_videos:
+        logger.debug(video)
+    logger.debug("############################################")
+
+@app.get('/api/compared-videos')
+async def get_compared_videos(request: Request):
+    compared_videos = read_compared_videos()
+    return JSONResponse(content=compared_videos)
+
+""" @app.post('/api/detect-cover-dummy')
+async def detect_cover_route(request: Request):
+    data = await request.json()
+    url1 = data.get('video_url1')
+    url2 = data.get('video_url2')
+    
+    # Simulate a cover detection result and score
+    result = 'Cover' if url1 and url2 else 'Not a Cover'
+    score = 0.85 if result == 'Cover' else 0.15  # Example score
+    
+    write_compared_video(url1, url2, result, score)
+    return JSONResponse(content={'result': result, 'score': score}) """
+
+@app.post("/api/check-if-cover")
+async def cover_detection_endpoint(request: Request):
+    data = await request.json()
+    youtube_url1 = data.get('video_url1')
+    youtube_url2 = data.get('video_url2')
+    
+    logger.debug(f"Received request for URLs: {youtube_url1} and {youtube_url2}")
+    
+    if not youtube_url1 or not youtube_url2:
+        raise HTTPException(status_code=400, detail="Both youtube_url1 and youtube_url2 parameters are required")
+
+    try:
+        # Get the WAV file paths
+        video_id1 = extract_video_id(youtube_url1)
+        video_id2 = extract_video_id(youtube_url2)
+        
+        wav_path1 = f"/tmp/youtube_cover_detector_api_wav/{video_id1}.wav"
+        wav_path2 = f"/tmp/youtube_cover_detector_api_wav/{video_id2}.wav"
+        print(f"WAV file paths: {wav_path1}, {wav_path2}")
+        
+        # Generate audio if needed
+        if not os.path.exists(wav_path1):
+            logger.debug(f"Generating audio for {video_id1}")
+            from app.youtube_cover_detector import _generate_audio_from_youtube_id
+            _generate_audio_from_youtube_id(video_id1)
+        
+        if not os.path.exists(wav_path2):
+            logger.debug(f"Generating audio for {video_id2}")
+            from app.youtube_cover_detector import _generate_audio_from_youtube_id
+            _generate_audio_from_youtube_id(video_id2)
+        
+        # Call cover_detection and get the actual values
+        result = cover_detection(youtube_url1, youtube_url2)
+        distance = float(result["distance"])  # Convert to float
+        is_cover = result["is_cover"]
+        result_text = "Cover" if is_cover else "Not Cover"
+        
+        # Write to CSV with the actual values
+        logger.debug(f"Writing result to CSV: Distance={distance}, Result={result_text}")
+        write_compared_video(youtube_url1, youtube_url2, result_text, distance)
+        
+        return {
+            "result": result_text,
+            "score": distance
+        }
+    except Exception as e:
+        logger.error(f"Error in cover detection: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+def reset_compared_videos():
+    """Reset the CSV file by creating a new empty file with just the header"""
+    logger.debug("Resetting compared videos CSV file")
+    try:
+        with open(CSV_FILE, mode='w', newline='') as file:
+            writer = csv.DictWriter(file, fieldnames=['url1', 'url2', 'result', 'score'])
+            writer.writeheader()
+        logger.debug("CSV file has been reset successfully")
+    except Exception as e:
+        logger.error(f"Error resetting CSV file: {e}")
+        raise
+
+@app.post('/api/reset-compared-videos')
+async def reset_compared_videos_endpoint():
+    """Endpoint to reset the compared videos CSV file"""
+    try:
+        reset_compared_videos()
+        return JSONResponse(content={"status": "success", "message": "Compared videos have been reset"})
+    except Exception as e:
+        logger.error(f"Error in reset_compared_videos_endpoint: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == '__main__':
     import uvicorn

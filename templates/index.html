@@ -1,6 +1,8 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>YouTube Cover Detector</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
     <style>
@@ -161,10 +163,13 @@
         }
 
         .result {
-            margin-bottom: 20px;
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
         }
 
-        .result h3 {
+        #detection-result h3 {
             color: #2196F3;
             margin-bottom: 15px;
         }
@@ -216,44 +221,167 @@
         .input-group input {
             padding: 8px 12px;
         }
+
+        /* Add some basic styling */
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .video-list {
+            margin-top: 20px;
+        }
+        .video-item {
+            padding: 10px;
+            border-bottom: 1px solid #ccc;
+        }
+
+        .container {
+            display: flex;
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .main-content {
+            flex: 2;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .compared-videos {
+            flex: 1;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .thumbnails {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .thumbnail {
+            max-width: 200px;
+            border-radius: 4px;
+        }
+        .compared-video-entry {
+            border-bottom: 1px solid #eee;
+            padding: 10px 0;
+        }
+        .compared-video-entry:last-child {
+            border-bottom: none;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .error {
+            color: red;
+            margin-top: 10px;
+            display: none;
+        }
+        .compared-thumbnails {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .thumbnail-link {
+            flex: 1;
+            display: block;
+            transition: transform 0.2s;
+        }
+        .thumbnail-link:hover {
+            transform: scale(1.05);
+        }
+        .thumbnail-link img {
+            width: 100%;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .compared-video-entry {
+            border-bottom: 1px solid #eee;
+            padding: 15px 0;
+        }
+        .compared-video-entry:last-child {
+            border-bottom: none;
+        }
+        .compared-video-entry p {
+            margin: 5px 0;
+        }
+        .compared-videos {
+            flex: 1;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            max-height: 80vh;
+            overflow-y: auto;
+            min-width: 300px;  /* Ensure minimum width for thumbnails */
+        }
     </style>
 </head>
 <body>
-    <h1>YouTube Cover Detector</h1>
-    <div class="card">
-        <div class="input-container">
-            <div class="input-grid">
-                <div class="input-group">
-                    <label for="url1">YouTube URL 1:</label>
-                    <div class="url-input-container">
-                        <input type="text" id="url1" placeholder="Enter first YouTube URL..." 
-                               value="https://www.youtube.com/watch?v=hLQl3WQQoQ0">
-                    </div>
-                </div>
-                
-                <div class="input-group">
-                    <label for="url2">YouTube URL 2:</label>
-                    <div class="url-input-container">
-                        <input type="text" id="url2" placeholder="Enter second YouTube URL..." 
-                               value="https://www.youtube.com/watch?v=HzC2-GJu1Q8">
-                    </div>
-                </div>
+    <div class="container">
+        <div class="main-content">
+            <h1>YouTube Cover Detector</h1>
+            <div class="input-group">
+                <label for="video1">Video URL 1:</label>
+                <input type="text" id="video1" placeholder="Enter YouTube URL" value="https://www.youtube.com/watch?v=hLQl3WQQoQ0">
+            </div>
+            <div class="input-group">
+                <label for="video2">Video URL 2:</label>
+                <input type="text" id="video2" placeholder="Enter YouTube URL" value="https://www.youtube.com/watch?v=HzC2-GJu1Q8">
+            </div>
+            <button onclick="detectCover()">Check if Cover</button>
+            
+            <!-- Progress and Results Section -->
+            <div id="progress-container" class="progress-container" style="display: none;">
+                <div id="progress-bar" class="progress-bar"></div>
+                <div id="progress-status" class="progress-status"></div>
             </div>
             
-            <div class="button-container">
-                <button class="check-btn" onclick="detectCover()" style="width: 100%">Check if Cover</button>
+            <div id="result" class="result" style="display: none;">
+                <div id="detection-result"></div>
+                <div id="preview" class="preview-container"></div>
             </div>
         </div>
-    </div>
-
-    <div id="result" class="result card" style="display: none;">
-        <div id="progress-container" class="progress-container" style="display: none;">
-            <div id="progress-bar" class="progress-bar"></div>
-            <div id="progress-status" class="progress-status"></div>
+        
+        <div class="compared-videos">
+            <h2>Previously Compared Videos</h2>
+            <div id="compared-videos-list"></div>
         </div>
-        <div id="detection-result"></div>
     </div>
-    <div id="preview" class="preview-container card" style="display: none;"></div>
 
     <script>
         const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -271,41 +399,63 @@
         }
 
         async function detectCover() {
-            const url1 = document.getElementById('url1').value;
-            const url2 = document.getElementById('url2').value;
+            const url1 = document.getElementById('video1').value;
+            const url2 = document.getElementById('video2').value;
             const resultDiv = document.getElementById('result');
             const progressContainer = document.getElementById('progress-container');
             const previewDiv = document.getElementById('preview');
+            const detectionResultDiv = document.getElementById('detection-result');
             
-            // Debug API URL
-            console.log('Full API URL:', API_URL + '/get-thumbnails');
-            
-            console.log('Attempting to detect cover with URLs:', { url1, url2 });
-            
-            // Validate inputs
             if (!url1 || !url2) {
                 alert('Please enter both YouTube URLs');
                 return;
             }
 
-            // Validate elements exist
-            if (!resultDiv || !progressContainer || !previewDiv) {
-                console.error('Required DOM elements not found');
-                return;
-            }
-            
-            // Initialize progress interval variable
             let progressInterval;
             
             try {
-                // Show containers
-                resultDiv.style.display = 'block';
+                // Show progress and reset results
                 progressContainer.style.display = 'block';
-                previewDiv.style.display = 'block';
+                resultDiv.style.display = 'none';
+                detectionResultDiv.innerHTML = '';
                 
-                // Start loading previews immediately
+                // Check if videos were already analyzed
+                const comparedVideos = await fetch('/api/compared-videos').then(r => r.json());
+                const alreadyAnalyzed = comparedVideos.some(v => 
+                    (v.url1 === url1 && v.url2 === url2) || 
+                    (v.url1 === url2 && v.url2 === url1)
+                );
+                
+                let startTime = Date.now();
+                progressInterval = setInterval(() => {
+                    let elapsed = (Date.now() - startTime) / 1000;
+                    
+                    if (alreadyAnalyzed) {
+                        // Faster progress for already analyzed videos (5 seconds total)
+                        if (elapsed <= 5) {
+                            let percent = (elapsed / 5) * 90; // Go up to 90% smoothly
+                            updateProgress(percent, 'Videos already analyzed, getting results...');
+                        }
+                    } else {
+                        // Normal progress for new analysis (30 seconds)
+                        if (elapsed <= 5) {
+                            let percent = (elapsed / 5) * 10;
+                            updateProgress(percent, 'Videos still not analyzed. Start processing...');
+                        } else if (elapsed <= 15) {
+                            let percent = 10 + ((elapsed - 5) / 10) * 30;
+                            updateProgress(percent, 'Downloading files...');
+                        } else if (elapsed <= 25) {
+                            let percent = 40 + ((elapsed - 15) / 10) * 30;
+                            updateProgress(percent, 'Extracting audio features...');
+                        } else if (elapsed <= 30) {
+                            let percent = 70 + ((elapsed - 25) / 5) * 20;
+                            updateProgress(percent, 'Generating embeddings...');
+                        }
+                    }
+                }, 100);
+
                 previewDiv.innerHTML = '<p class="loading">Loading previews...</p>';
-                
+
                 const thumbnailResponse = await fetch(API_URL + '/get-thumbnails', {
                     method: 'POST',
                     headers: {
@@ -318,14 +468,8 @@
                     })
                 });
 
-                // Debug response
-                console.log('Response status:', thumbnailResponse.status);
-                console.log('Response headers:', Object.fromEntries(thumbnailResponse.headers));
-                
-                // If not OK, log the full response
                 if (!thumbnailResponse.ok) {
                     const fullResponse = await thumbnailResponse.text();
-                    console.log('Full error response:', fullResponse);
                     throw new Error(`API Error (${thumbnailResponse.status}): ${fullResponse.substring(0, 200)}...`);
                 }
 
@@ -345,21 +489,7 @@
                     </div>
                 `;
 
-                // Start progress animation
-                let startTime = Date.now();
-                progressInterval = setInterval(() => {
-                    let elapsed = (Date.now() - startTime) / 1000;
-                    if (elapsed <= 5) {
-                        let percent = (elapsed / 5) * 50;
-                        updateProgress(percent, 'Processing audio...');
-                    } else if (elapsed <= 10) {
-                        let percent = 50 + ((elapsed - 5) / 5) * 40;
-                        updateProgress(percent, 'Generating embeddings...');
-                    }
-                }, 100);
-
-                // Start the detection process
-                const startResponse = await fetch(API_URL + '/detect-cover', {
+                const startResponse = await fetch(API_URL + '/check-if-cover', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -374,59 +504,78 @@
                     throw new Error('Failed to start detection process');
                 }
 
-                const { task_id } = await startResponse.json();
+                const { result, score } = await startResponse.json();
                 
-                // Poll for results
-                while (true) {
-                    const statusResponse = await fetch(API_URL + '/detection-status/' + task_id);
-                    const statusData = await statusResponse.json();
-                    
-                    if (statusData.status === 'completed') {
-                        clearInterval(progressInterval);
-                        updateProgress(100, 'Complete!');
-                        
-                        setTimeout(() => {
-                            progressContainer.style.display = 'none';
-                            document.getElementById('detection-result').innerHTML = `
-                                <h3>Results:</h3>
-                                <p>Distance: <strong>${statusData.result.distance}</strong></p>
-                                <p>Is Cover: <span class="${statusData.result.is_cover ? 'is-cover-yes' : 'is-cover-no'}">
-                                    ${statusData.result.is_cover ? "Yes" : "No"}
-                                </span></p>
-                            `;
-                        }, 1000);
-                        break;
-                    } else if (statusData.status === 'failed') {
-                        clearInterval(progressInterval);
-                        progressContainer.style.display = 'none';
-                        resultDiv.innerHTML = `<p class="error">Error: ${statusData.error}</p>`;
-                        break;
-                    }
-                    
-                    // Wait 1 second before polling again
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                }
+                fetchComparedVideos();
+
+                clearInterval(progressInterval);
+                updateProgress(100, 'Complete!');
+                
+                setTimeout(() => {
+                    progressContainer.style.display = 'none';
+                    resultDiv.style.display = 'block';
+                    detectionResultDiv.innerHTML = `
+                        <h3>Result:</h3>
+                        <p><strong>Result:</strong> ${result}</p>
+                        <p><strong>Score:</strong> ${score}</p>
+                    `;
+                }, 1000);
                 
             } catch (error) {
-                console.error('Error details:', {
-                    message: error.message,
-                    error: error,
-                    stack: error.stack
-                });
-                if (progressInterval) {
-                    clearInterval(progressInterval);
-                }
-                if (progressContainer) {
-                    progressContainer.style.display = 'none';
-                }
-                if (resultDiv) {
-                    resultDiv.innerHTML = `<p class="error">Error: ${error.message}</p>`;
-                }
-                if (previewDiv) {
-                    previewDiv.innerHTML = `<p class="error">Error: ${error.message}</p>`;
-                }
+                console.error('Error details:', error);
+                clearInterval(progressInterval);
+                progressContainer.style.display = 'none';
+                resultDiv.style.display = 'block';  // Show for error message
+                detectionResultDiv.innerHTML = `<p class="error">Error: ${error.message}</p>`;
+                previewDiv.innerHTML = '';
             }
         }
+
+        async function fetchComparedVideos() {
+            try {
+                const response = await fetch('/api/compared-videos');
+                const comparedVideos = await response.json();
+                renderComparedVideos(comparedVideos);
+            } catch (error) {
+                console.error('Error fetching compared videos:', error);
+            }
+        }
+
+        function renderComparedVideos(comparedVideos) {
+            const videoListElement = document.getElementById('compared-videos-list');
+            videoListElement.innerHTML = ''; // Clear existing list
+
+            comparedVideos.forEach(video => {
+                // Extract video IDs from URLs
+                const videoId1 = extractVideoId(video.url1);
+                const videoId2 = extractVideoId(video.url2);
+                
+                const videoItem = document.createElement('div');
+                videoItem.className = 'compared-video-entry';
+                videoItem.innerHTML = `
+                    <div class="compared-thumbnails">
+                        <a href="${video.url1}" target="_blank" class="thumbnail-link">
+                            <img src="https://img.youtube.com/vi/${videoId1}/default.jpg" alt="Video 1 Thumbnail">
+                        </a>
+                        <a href="${video.url2}" target="_blank" class="thumbnail-link">
+                            <img src="https://img.youtube.com/vi/${videoId2}/default.jpg" alt="Video 2 Thumbnail">
+                        </a>
+                    </div>
+                    <p><strong>Result:</strong> ${video.result}</p>
+                    <p><strong>Score:</strong> ${video.score}</p>
+                `;
+                videoListElement.appendChild(videoItem);
+            });
+        }
+
+        function extractVideoId(url) {
+            const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+            const match = url.match(regExp);
+            return (match && match[2].length === 11) ? match[2] : null;
+        }
+
+        // Call the function to fetch and render the list on page load
+        fetchComparedVideos();
     </script>
 </body>
 </html> 

@@ -189,6 +189,8 @@ def _extract_cqt_worker_torchaudio(args):
         transform = CQT
     elif device == "cuda":
         transform = CQT2010v2
+    else:
+        transform = CQT
 
     if not os.path.exists(feat_path):
         signal, sr = torchaudio.load(wav_path)
@@ -229,7 +231,7 @@ def _extract_cqt_worker_torchaudio(args):
 def worker(args):
     line, cqt_dir, fmin, max_freq, n_bins, bins_per_octave, device = args
     try:
-        if device in ("mps", "cuda"):
+        if device in ("mps", "cuda", "cpu"):
             return _extract_cqt_worker_torchaudio(args)
     
         return _extract_cqt_worker_librosa(
