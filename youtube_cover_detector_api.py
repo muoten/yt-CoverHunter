@@ -36,10 +36,15 @@ from app.youtube_cover_detector import (
 #First version that works! Though it takes more than 3 minutes to run in fly.dev free tier
 YT_DLP_USE_COOKIES = True
 
-def setup_logger(name):
-    logger = logging.getLogger(name)
+def setup_logger():
+    logger = logging.getLogger('api')
+    
+    # Clear any existing handlers to prevent duplicates
+    if logger.hasHandlers():
+        logger.handlers.clear()
+    
     logger.setLevel(logging.DEBUG)
-    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.DEBUG)
     formatter = logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -47,10 +52,14 @@ def setup_logger(name):
     )
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
+    
+    # Prevent propagation to root logger
+    logger.propagate = False
+    
     return logger
 
-# Setup logger
-logger = setup_logger('api')
+# Initialize logger once at module level
+logger = setup_logger()
 
 # Configure environment before importing libraries that might use it
 os.environ["JOBLIB_TEMP_FOLDER"] = "/tmp"
@@ -165,10 +174,6 @@ print("Starting application...")
 
 # Create the FastAPI app
 app = FastAPI()
-
-# Set up logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
 
 # Store results in memory
 detection_results: Dict[str, Dict] = {}
