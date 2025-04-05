@@ -417,43 +417,76 @@
             let progressInterval;
             
             try {
-                // Show progress and reset results
-                progressContainer.style.display = 'block';
-                resultDiv.style.display = 'none';
-                detectionResultDiv.innerHTML = '';
-                
-                // Check if videos were already analyzed
+                // Check if videos were already analyzed first
                 const comparedVideos = await fetch('/api/compared-videos').then(r => r.json());
-                const alreadyAnalyzed = comparedVideos.some(v => 
+                const existingResult = comparedVideos.find(v => 
                     (v.url1 === url1 && v.url2 === url2) || 
                     (v.url1 === url2 && v.url2 === url1)
                 );
+
+                if (existingResult) {
+                    // Show results immediately from CSV
+                    resultDiv.style.display = 'block';
+                    detectionResultDiv.innerHTML = `
+                        <h3>Result:</h3>
+                        <p><strong>Result:</strong> ${existingResult.result}</p>
+                        <p><strong>Score:</strong> ${existingResult.score}</p>
+                    `;
+
+                    // Still show thumbnails
+                    const thumbnailResponse = await fetch(API_URL + '/get-thumbnails', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            video_url1: url1,
+                            video_url2: url2
+                        })
+                    });
+
+                    if (thumbnailResponse.ok) {
+                        const thumbnailData = await thumbnailResponse.json();
+                        previewDiv.innerHTML = `
+                            <div class="thumbnails">
+                                <div class="thumbnail-container">
+                                    <img src="${thumbnailData.thumbnails.video1}" alt="Video 1 Thumbnail">
+                                    <div class="thumbnail-label">Video 1</div>
+                                    <div><a href="${thumbnailData.video_urls.url1}" target="_blank" class="youtube-link">Watch on YouTube</a></div>
+                                </div>
+                                <div class="thumbnail-container">
+                                    <img src="${thumbnailData.thumbnails.video2}" alt="Video 2 Thumbnail">
+                                    <div class="thumbnail-label">Video 2</div>
+                                    <div><a href="${thumbnailData.video_urls.url2}" target="_blank" class="youtube-link">Watch on YouTube</a></div>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    return;
+                }
+
+                // If not found in CSV, continue with full analysis
+                progressContainer.style.display = 'block';
+                resultDiv.style.display = 'none';
+                detectionResultDiv.innerHTML = '';
                 
                 let startTime = Date.now();
                 progressInterval = setInterval(() => {
                     let elapsed = (Date.now() - startTime) / 1000;
                     
-                    if (alreadyAnalyzed) {
-                        // Faster progress for already analyzed videos (5 seconds total)
-                        if (elapsed <= 5) {
-                            let percent = (elapsed / 5) * 90; // Go up to 90% smoothly
-                            updateProgress(percent, 'Videos already analyzed, getting results...');
-                        }
-                    } else {
-                        // Normal progress for new analysis (30 seconds)
-                        if (elapsed <= 5) {
-                            let percent = (elapsed / 5) * 10;
-                            updateProgress(percent, 'Videos still not analyzed. Start processing...');
-                        } else if (elapsed <= 15) {
-                            let percent = 10 + ((elapsed - 5) / 10) * 30;
-                            updateProgress(percent, 'Downloading files...');
-                        } else if (elapsed <= 25) {
-                            let percent = 40 + ((elapsed - 15) / 10) * 30;
-                            updateProgress(percent, 'Extracting audio features...');
-                        } else if (elapsed <= 30) {
-                            let percent = 70 + ((elapsed - 25) / 5) * 20;
-                            updateProgress(percent, 'Generating embeddings...');
-                        }
+                    if (elapsed <= 5) {
+                        let percent = (elapsed / 5) * 10;
+                        updateProgress(percent, 'Videos still not analyzed. Start processing...');
+                    } else if (elapsed <= 15) {
+                        let percent = 10 + ((elapsed - 5) / 10) * 30;
+                        updateProgress(percent, 'Downloading files...');
+                    } else if (elapsed <= 25) {
+                        let percent = 40 + ((elapsed - 15) / 10) * 30;
+                        updateProgress(percent, 'Extracting audio features...');
+                    } else if (elapsed <= 30) {
+                        let percent = 70 + ((elapsed - 25) / 5) * 20;
+                        updateProgress(percent, 'Generating embeddings...');
                     }
                 }, 100);
 
