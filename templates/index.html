@@ -801,6 +801,28 @@
                 return;
             }
 
+            // Check if videos were already compared
+            try {
+                const response = await fetch('/api/compared-videos');
+                const comparedVideos = await response.json();
+                const alreadyCompared = comparedVideos.some(video => 
+                    (video.url1 === video1Input.value && video.url2 === video2Input.value) ||
+                    (video.url1 === video2Input.value && video.url2 === video1Input.value)
+                );
+                
+                if (alreadyCompared) {
+                    // If already compared, don't disable the button and show cached result
+                    const video = comparedVideos.find(v => 
+                        (v.url1 === video1Input.value && v.url2 === video2Input.value) ||
+                        (v.url1 === video2Input.value && v.url2 === video1Input.value)
+                    );
+                    displayResult(video.result, video.score);
+                    return;
+                }
+            } catch (error) {
+                console.error('Error checking compared videos:', error);
+            }
+
             // Disable the compare button
             compareButton.disabled = true;
             compareButton.style.opacity = '0.7';
