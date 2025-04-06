@@ -927,7 +927,7 @@
                     }
                 } catch (error) {
                     if (isAborting) {
-                        throw new Error('Request cancelled due to timeout. Server might be experiencing high load. Please try again later.');
+                        throw new Error('Request cancelled due to timeout. Server might be experiencing high load. Please refresh the page and try again later.');
                     }
                     throw error;
                 }
