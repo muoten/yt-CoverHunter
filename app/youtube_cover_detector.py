@@ -568,21 +568,18 @@ class CoverDetector:
                     logger.error(f"Error cleaning up {wav_path}: {e}")
 
 def get_average_processing_time() -> float:
-    """Calculate average processing time from last 3 entries"""
+    """Calculate median processing time from last 3 entries"""
     try:
         videos = read_compared_videos()
         logger.debug(f"Read {len(videos)} entries from CSV")
-        logger.debug(f"Last 3 entries: {videos[-3:] if len(videos) >= 3 else videos}")
         if not videos:
             logger.info("No previous entries found, using default timeout of 50 seconds")
             return 50  # Default if no entries
         
         recent_times = []
         for v in videos[-3:]:
-            logger.debug(f"Processing entry: {v}")
             try:
                 elapsed = v.get('elapsed_time')
-                logger.debug(f"Found elapsed_time value: {elapsed}, type: {type(elapsed)}")
                 if elapsed and elapsed != 'None':
                     # Try to convert to float, handling different formats
                     if isinstance(elapsed, (int, float)):
@@ -598,9 +595,15 @@ def get_average_processing_time() -> float:
             logger.info("No valid elapsed times found, using default timeout of 50 seconds")
             return 50  # Default if no valid times
         
-        avg_time = sum(recent_times) / len(recent_times)
-        logger.info(f"Calculated average processing time: {round(avg_time)} seconds from {len(recent_times)} recent entries. Times used: {recent_times}")
-        return round(avg_time)
+        # Calculate median
+        sorted_times = sorted(recent_times)
+        if len(sorted_times) % 2 == 0:
+            median_time = (sorted_times[len(sorted_times)//2 - 1] + sorted_times[len(sorted_times)//2]) / 2
+        else:
+            median_time = sorted_times[len(sorted_times)//2]
+        
+        logger.info(f"Calculated median processing time: {round(median_time)} seconds from {len(recent_times)} recent entries. Times used: {recent_times}")
+        return round(median_time)
     except Exception as e:
         logger.error(f"Error calculating average time: {e}")
         logger.info("Using default timeout of 50 seconds due to error")
