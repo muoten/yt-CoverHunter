@@ -15,7 +15,6 @@ RUN apt-get update && apt-get install -y \
     aria2 \
     git-lfs \
     wget \
-    nano \
     && rm -rf /var/lib/apt/lists/*
 
 # Verify ffmpeg installation
@@ -57,6 +56,9 @@ COPY youtube_cover_detector_api.py /code/
 COPY templates/ /code/templates/
 COPY data/ /code/data/
 COPY pretrain_model/ /code/pretrain_model/
+
+# Install nano at the end to avoid cache invalidation of previous layers
+RUN apt-get update && apt-get install -y nano && rm -rf /var/lib/apt/lists/*
 
 # Create volume for persistent data
 VOLUME /data
