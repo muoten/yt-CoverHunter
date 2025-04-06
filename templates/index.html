@@ -618,6 +618,32 @@
         .paste-icon:hover {
             opacity: 1;
         }
+
+        /* Update result text styles */
+        .result-text {
+            font-weight: 500;
+            padding: 4px 8px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+
+        .result-text.is-cover {
+            color: #4CAF50;
+            background-color: #e8f5e9;
+        }
+
+        .result-text.not-cover {
+            color: #666;
+            background-color: #f5f5f5;
+        }
+
+        /* Add strikethrough when feedback is not-ok */
+        .compared-video-entry:has(.feedback-btn.not-ok.selected) .result-text {
+            text-decoration: line-through;
+            opacity: 0.7;
+            background-color: #ffebee;
+            color: #f44336;
+        }
     </style>
 </head>
 <body>
@@ -854,7 +880,7 @@
                             </div>
                         </div>
                     </div>
-                    <p><strong>Result:</strong> ${video.result}</p>
+                    <p><strong>Result:</strong> <span class="result-text ${video.result === 'Cover' ? 'is-cover' : 'not-cover'}">${video.result}</span></p>
                     <p><strong>Confidence:</strong> ${confidence}</p>
                     <div class="feedback-buttons">
                         <button class="feedback-btn ok ${video.feedback === 'ok' ? 'selected' : ''}" 
