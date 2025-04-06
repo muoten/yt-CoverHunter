@@ -1132,11 +1132,11 @@
                     <p><strong>Confidence:</strong> <span class="confidence-text">${confidence}</span>${video.feedback === 'not-ok' ? ' <em class="corrected-note">Manual review</em>' : ''}</p>
                     <div class="feedback-buttons">
                         <button class="feedback-btn ok ${video.feedback === 'ok' ? 'selected' : ''}" 
-                                onclick="submitFeedback('${video.url1}', '${video.url2}', 'ok', this)">
+                                onclick="submitFeedback('${video.url1}', '${video.url2}', 'ok')">
                             ✓ OK
                         </button>
                         <button class="feedback-btn not-ok ${video.feedback === 'not-ok' ? 'selected' : ''}"
-                                onclick="submitFeedback('${video.url1}', '${video.url2}', 'not-ok', this)">
+                                onclick="submitFeedback('${video.url1}', '${video.url2}', 'not-ok')">
                             ✗ Not OK
                         </button>
                     </div>
@@ -1145,44 +1145,35 @@
             });
         }
 
-        async function submitFeedback(url1, url2, feedback, buttonElement) {
+        async function submitFeedback(url1, url2, feedback) {
+            console.log(`Submitting feedback for ${url1}, ${url2}: ${feedback}`);
             try {
-                // Remove selected class from both buttons in this group
-                const buttonsGroup = buttonElement.parentElement;
-                buttonsGroup.querySelectorAll('.feedback-btn').forEach(btn => {
-                    btn.classList.remove('selected');
-                });
-                
-                // Add selected class to clicked button
-                buttonElement.classList.add('selected');
-
-                // Send feedback to server
-                const response = await fetch('/api/feedback', {
+                const response = await fetch(`${API_URL}/feedback`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        url1,
-                        url2,
-                        feedback
+                        url1: url1,
+                        url2: url2,
+                        feedback: feedback
                     })
                 });
-
+                
                 if (!response.ok) {
-                    throw new Error('Failed to submit feedback');
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Failed to submit feedback');
                 }
-
-                // Fetch updated data and refresh the display
-                const comparedVideos = await fetch('/api/compared-videos').then(r => r.json());
-                renderComparedVideos(comparedVideos);
-
-                console.log('Feedback submitted successfully');
-
+                
+                const data = await response.json();
+                if (data.status === 'success') {
+                    // Update UI to reflect the feedback
+                    await fetchComparedVideos();
+                }
             } catch (error) {
                 console.error('Error submitting feedback:', error);
-                // Remove selected class if submission failed
-                buttonElement.classList.remove('selected');
+                alert(`Failed to submit feedback: ${error.message}`);
+                throw error;
             }
         }
 

@@ -542,29 +542,46 @@ async def reset_compared_videos_endpoint():
 
 @app.post("/api/feedback")
 async def submit_feedback(request: Request):
-    data = await request.json()
-    url1 = data['url1']
-    url2 = data['url2']
-    feedback = data['feedback']
-    
+    logger.info("Received feedback request")
     try:
+        data = await request.json()
+        url1 = data['url1']
+        url2 = data['url2']
+        feedback = data['feedback']
+        
+        logger.info(f"Processing feedback: {url1}, {url2}, {feedback}")
+        
         # Read current CSV
         videos = read_compared_videos()
+        logger.debug(f"Read {len(videos)} entries from CSV")
         
         # Update the feedback for matching entry
+        found = False
         for video in videos:
             if ((video['url1'] == url1 and video['url2'] == url2) or 
                 (video['url1'] == url2 and video['url2'] == url1)):
                 video['feedback'] = feedback
+                found = True
+                logger.info(f"Updated feedback for entry")
+                break
+        
+        if not found:
+            logger.error(f"No matching entry found for URLs: {url1}, {url2}")
+            raise HTTPException(status_code=404, detail="No matching entry found")
         
         # Write back to CSV
-        with open(CSV_FILE, mode='w', newline='') as file:
-            writer = csv.DictWriter(file, fieldnames=['url1', 'url2', 'result', 'score', 'feedback'])
+        csv_file = config['SCORES_CSV_FILE']
+        os.makedirs(os.path.dirname(csv_file), exist_ok=True)
+        
+        with open(csv_file, mode='w', newline='') as file:
+            writer = csv.DictWriter(file, fieldnames=['url1', 'url2', 'result', 'score', 'feedback', 'elapsed_time'])
             writer.writeheader()
             writer.writerows(videos)
+            logger.info(f"Successfully wrote {len(videos)} entries back to CSV")
         
         return {"status": "success"}
     except Exception as e:
+        logger.error(f"Error in submit_feedback: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 def _generate_audio_from_youtube_id(youtube_id):
