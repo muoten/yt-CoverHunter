@@ -502,11 +502,15 @@ async def check_if_cover(request: VideoRequest, background_tasks: BackgroundTask
 
 async def process_videos(url1: str, url2: str):
     detector = CoverDetector()
+    start_time = time.time()
     try:
-        return await detector.compare_videos(url1, url2)
+        result = await detector.compare_videos(url1, url2)
+        elapsed_time = time.time() - start_time
+        result['elapsed_time'] = round(elapsed_time, 2)  # Add elapsed time to result
+        return result
     except Exception as e:
         logger.error(f"Error in process_videos: {str(e)}")
-        logger.exception(e)  # This will log the full traceback
+        logger.exception(e)
         raise HTTPException(status_code=500, detail=f"Error processing videos: {str(e)}")
 
 def reset_compared_videos():

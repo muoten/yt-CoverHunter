@@ -375,16 +375,24 @@ def read_compared_videos():
             writer.writeheader()
     return compared_videos
 
-def write_compared_video(url1, url2, result, score):
+def write_compared_video(url1: str, url2: str, result: str, score: float, elapsed_time: float = None):
+    """Write the comparison result to CSV."""
     logger.debug(f"Starting write_compared_video with params: {url1}, {url2}, {result}, {score}")
     try:
-        with open(CSV_FILE, mode='a', newline='') as file:
-            writer = csv.DictWriter(file, fieldnames=['url1', 'url2', 'result', 'score'])
-            if file.tell() == 0:
-                writer.writeheader()
-                logger.debug("Writing header to CSV file")
-            row_data = {'url1': url1, 'url2': url2, 'result': result, 'score': score}
-            writer.writerow(row_data)
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(CSV_FILE), exist_ok=True)
+        
+        # Create file with headers if it doesn't exist
+        if not os.path.exists(CSV_FILE):
+            with open(CSV_FILE, mode='w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(['url1', 'url2', 'result', 'score', 'feedback', 'elapsed_time'])
+        
+        # Write the new row
+        with open(CSV_FILE, mode='a', newline='') as f:
+            writer = csv.writer(f)
+            row_data = {'url1': url1, 'url2': url2, 'result': result, 'score': score, 'feedback': None, 'elapsed_time': elapsed_time}
+            writer.writerow(row_data.values())
             logger.debug(f"Successfully wrote row to CSV: {row_data}")
     except Exception as e:
         logger.error(f"Error writing to CSV: {e}")
@@ -507,6 +515,7 @@ class CoverDetector:
         
     async def compare_videos(self, url1: str, url2: str) -> Dict[str, Any]:
         try:
+            start_time = time.time()
             # Download and process videos
             if asyncio.current_task().cancelled():
                 raise asyncio.CancelledError()
@@ -537,10 +546,11 @@ class CoverDetector:
             
             result = "Cover" if is_cover else "Not Cover"
             
+            elapsed_time = time.time() - start_time
             # Write result to CSV
-            write_compared_video(url1, url2, result, distance)
+            write_compared_video(url1, url2, result, float(distance), elapsed_time=round(elapsed_time, 2))
             
-            return {"result": result, "score": float(distance)}  # Convert numpy.float32 to Python float
+            return {"result": result, "score": float(distance)}
             
         except Exception as e:
             logger.error(f"Error comparing videos: {e}")
