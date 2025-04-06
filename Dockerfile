@@ -48,6 +48,9 @@ RUN mkdir -p /code/pretrain_model/checkpoints \
     && chmod -R 777 /tmp/youtube_cover_detector_api_wav \
     && chmod -R 777 /tmp/.cache
 
+# Install nano at the end to avoid cache invalidation of previous layers
+RUN apt-get update && apt-get install -y nano && rm -rf /var/lib/apt/lists/*
+
 # Copy all application files at once - do this last to maximize cache usage
 COPY app/ /code/app/
 COPY tools/ /code/tools/
@@ -57,8 +60,7 @@ COPY templates/ /code/templates/
 COPY data/ /code/data/
 COPY pretrain_model/ /code/pretrain_model/
 
-# Install nano at the end to avoid cache invalidation of previous layers
-RUN apt-get update && apt-get install -y nano && rm -rf /var/lib/apt/lists/*
+
 
 # Create volume for persistent data
 VOLUME /data
