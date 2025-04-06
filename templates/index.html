@@ -1038,42 +1038,24 @@
                         <div class="thumbnail-label">Video ${containerNumber}</div>
                     `;
 
-                    let player = null;
-
-                    // Function to create new player
-                    const createPlayer = () => {
-                        player = new YT.Player(`player-${containerNumber}`, {
-                            videoId: videoId,
-                            playerVars: {
-                                autoplay: 1,
-                                controls: 0,
-                                mute: 1,
-                                playsinline: 1,
-                                rel: 0,
-                                showinfo: 0,
-                                start: 0
-                            },
-                            events: {
-                                'onReady': (event) => {
-                                    event.target.playVideo();
-                                }
-                            }
-                        });
-                    };
+                    // Create player immediately but keep it paused
+                    const player = new YT.Player(`player-${containerNumber}`, {
+                        videoId: videoId,
+                        playerVars: {
+                            autoplay: 0,
+                            controls: 0,
+                            mute: 1,
+                            playsinline: 1,
+                            rel: 0,
+                            showinfo: 0,
+                            start: 0
+                        }
+                    });
 
                     // Initialize player when hovering
                     thumbnailContainer.addEventListener('mouseenter', () => {
-                        if (!player) {
-                            createPlayer();
-                        } else {
-                            // Check if video ID has changed
-                            const currentVideoId = player.getVideoData().video_id;
-                            if (currentVideoId !== videoId) {
-                                player.destroy();
-                                createPlayer();
-                            } else {
-                                player.playVideo();
-                            }
+                        if (player && player.playVideo) {
+                            player.playVideo();
                         }
                     });
 
@@ -1095,11 +1077,6 @@
                             }
                         }
                     });
-
-                    // If mouse is currently over the container, create player immediately
-                    if (thumbnailContainer.matches(':hover')) {
-                        createPlayer();
-                    }
                 }
             } catch (error) {
                 console.error('Error loading thumbnail:', error);
@@ -1148,15 +1125,12 @@
                 
                 // Only trigger update if URL actually changed
                 if (oldValue !== text) {
-                    // Clean up existing player
-                    const containerNumber = inputId === 'video1' ? 1 : 2;
-                    const existingPlayer = YT.get(`player-${containerNumber}`);
-                    if (existingPlayer) {
-                        existingPlayer.destroy();
-                    }
-                    
-                    // Trigger thumbnail update
-                    input.dispatchEvent(new Event('input'));
+                    // Trigger the input event to update thumbnail
+                    const event = new Event('input', {
+                        bubbles: true,
+                        cancelable: true,
+                    });
+                    input.dispatchEvent(event);
                 }
             } catch (err) {
                 console.error('Failed to paste URL:', err);
