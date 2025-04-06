@@ -896,7 +896,27 @@
             });
             
             if (totalFeedback === 0) return null;
-            return ((okCount / totalFeedback) * 100).toFixed(1);
+            
+            // Calculate Wilson score interval for 95% confidence
+            const p = okCount / totalFeedback;  // proportion
+            const n = totalFeedback;  // sample size
+            const z = 1.96;  // 95% confidence level
+            
+            // Wilson score interval calculation
+            const denominator = 1 + (z * z) / n;
+            const center = (p + (z * z) / (2 * n)) / denominator;
+            const margin = z * Math.sqrt((p * (1 - p) + (z * z) / (4 * n)) / n) / denominator;
+            
+            const lowerBound = Math.max(0, (center - margin) * 100).toFixed(1);
+            const upperBound = Math.min(100, (center + margin) * 100).toFixed(1);
+            const accuracy = (p * 100).toFixed(1);
+            
+            return {
+                accuracy,
+                lowerBound,
+                upperBound,
+                samples: totalFeedback
+            };
         }
 
         function renderComparedVideos(comparedVideos) {
@@ -906,7 +926,7 @@
             // Calculate and display accuracy
             const accuracy = calculateAccuracy(comparedVideos);
             const accuracyHtml = accuracy !== null ? 
-                `<p class="accuracy-stat">Estimated accuracy: ${accuracy}% (${comparedVideos.filter(v => v.feedback).length} samples)</p>` : 
+                `<p class="accuracy-stat">Estimated accuracy: ${accuracy.accuracy}% (95% CI: ${accuracy.lowerBound}%-${accuracy.upperBound}%) based on ${accuracy.samples} samples</p>` : 
                 '<p class="accuracy-stat">No feedback yet</p>';
 
             videoListElement.innerHTML = accuracyHtml;
