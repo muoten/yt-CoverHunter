@@ -806,10 +806,18 @@
             compareButton.style.opacity = '0.7';
             compareButton.style.cursor = 'not-allowed';
 
-            // Define constants at function scope so they're available everywhere
-            let initialExpectedTime = 50; // seconds total
+            // Get average processing time from recent comparisons
+            let initialExpectedTime = 50;  // Default
+            try {
+                const response = await fetch('/api/avg-processing-time');
+                const data = await response.json();
+                initialExpectedTime = data.avg_time;
+            } catch (e) {
+                console.error('Error getting average time:', e);
+            }
+            
+            const MAX_TOTAL_TIME = Math.ceil(initialExpectedTime * 1.1);
             let totalExpectedTime = initialExpectedTime; // current expected time
-            const MAX_TOTAL_TIME = Math.ceil(initialExpectedTime * 1.1); // Maximum allowed time in seconds
             let isInExtension = false; // Track if we're in extension mode
             
             // Create AbortController for the fetch request

@@ -30,11 +30,13 @@ from app.youtube_cover_detector import (
     _cosine_distance, 
     _generate_embeddings_from_filepaths,
     _generate_dataset_txt_from_files,
-    cover_detection as youtube_cover_detection
+    cover_detection as youtube_cover_detection,
+    get_average_processing_time
 )
 from app.parse_config import config
 from contextlib import suppress
 from app.youtube_cover_detector import CoverDetector, cleanup_temp_files, logger
+import math
 
 #First version that works! Though it takes more than 3 minutes to run in fly.dev free tier
 YT_DLP_USE_COOKIES = os.getenv('YT_DLP_USE_COOKIES', False)
@@ -467,6 +469,9 @@ async def detect_cover_route(request: Request):
 async def check_if_cover(request: VideoRequest, background_tasks: BackgroundTasks):
     video_key = f"{request.video_url1}_{request.video_url2}"
     
+    # Use dynamic timeout based on recent performance
+    timeout = math.ceil(get_average_processing_time() * 1.1)
+    
     logger.info(f"Starting cover detection for videos: {request.video_url1} and {request.video_url2}")
     
     # Cancel any existing task for these videos
@@ -481,7 +486,7 @@ async def check_if_cover(request: VideoRequest, background_tasks: BackgroundTask
     active_tasks[video_key] = task
     
     try:
-        result = await asyncio.wait_for(task, timeout=config['REQUEST_TIMEOUT'])
+        result = await asyncio.wait_for(task, timeout=timeout)
         del active_tasks[video_key]
         return result
     except asyncio.TimeoutError:
@@ -655,6 +660,11 @@ async def cleanup_request(request: VideoRequest):
             await active_tasks[video_key]
         del active_tasks[video_key]
     return {"status": "cleaned"}
+
+@app.get("/api/avg-processing-time")
+async def get_avg_time():
+    avg_time = get_average_processing_time()
+    return {"avg_time": avg_time}
 
 if __name__ == '__main__':
     import uvicorn

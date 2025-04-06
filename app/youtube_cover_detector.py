@@ -365,19 +365,21 @@ def read_compared_videos():
     compared_videos = []
     try:
         with open(CSV_FILE, mode='r', newline='') as file:
-            reader = csv.DictReader(file)
+            reader = csv.DictReader(file, fieldnames=['url1', 'url2', 'result', 'score', 'feedback', 'elapsed_time'])
+            next(reader)  # Skip header row
             for row in reader:
+                logger.debug(f"Read row from CSV: {row}")
                 compared_videos.append(row)
     except FileNotFoundError:
         logger.debug("CSV file not found. Creating a new file with headers.")
         with open(CSV_FILE, mode='w', newline='') as file:
-            writer = csv.DictWriter(file, fieldnames=['url1', 'url2', 'result', 'score'])
+            writer = csv.DictWriter(file, fieldnames=['url1', 'url2', 'result', 'score', 'feedback', 'elapsed_time'])
             writer.writeheader()
     return compared_videos
 
 def write_compared_video(url1: str, url2: str, result: str, score: float, elapsed_time: float = None):
     """Write the comparison result to CSV."""
-    logger.debug(f"Starting write_compared_video with params: {url1}, {url2}, {result}, {score}")
+    logger.debug(f"Starting write_compared_video with params: {url1}, {url2}, {result}, {score}, elapsed_time={elapsed_time}")
     try:
         # Create directory if it doesn't exist
         os.makedirs(os.path.dirname(CSV_FILE), exist_ok=True)
@@ -391,9 +393,8 @@ def write_compared_video(url1: str, url2: str, result: str, score: float, elapse
         # Write the new row
         with open(CSV_FILE, mode='a', newline='') as f:
             writer = csv.writer(f)
-            row_data = {'url1': url1, 'url2': url2, 'result': result, 'score': score, 'feedback': None, 'elapsed_time': elapsed_time}
-            writer.writerow(row_data.values())
-            logger.debug(f"Successfully wrote row to CSV: {row_data}")
+            writer.writerow([url1, url2, result, score, None, elapsed_time])
+            logger.debug(f"Successfully wrote row to CSV with elapsed_time: {elapsed_time}")
     except Exception as e:
         logger.error(f"Error writing to CSV: {e}")
         raise
@@ -565,6 +566,45 @@ class CoverDetector:
                     os.remove(wav_path)
                 except Exception as e:
                     logger.error(f"Error cleaning up {wav_path}: {e}")
+
+def get_average_processing_time() -> float:
+    """Calculate average processing time from last 3 entries"""
+    try:
+        videos = read_compared_videos()
+        logger.debug(f"Read {len(videos)} entries from CSV")
+        logger.debug(f"Last 3 entries: {videos[-3:] if len(videos) >= 3 else videos}")
+        if not videos:
+            logger.info("No previous entries found, using default timeout of 50 seconds")
+            return 50  # Default if no entries
+        
+        recent_times = []
+        for v in videos[-3:]:
+            logger.debug(f"Processing entry: {v}")
+            try:
+                elapsed = v.get('elapsed_time')
+                logger.debug(f"Found elapsed_time value: {elapsed}, type: {type(elapsed)}")
+                if elapsed and elapsed != 'None':
+                    # Try to convert to float, handling different formats
+                    if isinstance(elapsed, (int, float)):
+                        recent_times.append(float(elapsed))
+                    elif isinstance(elapsed, str) and elapsed.strip():
+                        recent_times.append(float(elapsed.split(',')[0]))
+                    logger.debug(f"Successfully added time: {recent_times[-1]}")
+            except (ValueError, TypeError, IndexError) as e:
+                logger.debug(f"Skipping invalid elapsed_time value: {elapsed} - {str(e)}")
+                continue
+        
+        if not recent_times:
+            logger.info("No valid elapsed times found, using default timeout of 50 seconds")
+            return 50  # Default if no valid times
+        
+        avg_time = sum(recent_times) / len(recent_times)
+        logger.info(f"Calculated average processing time: {round(avg_time)} seconds from {len(recent_times)} recent entries. Times used: {recent_times}")
+        return round(avg_time)
+    except Exception as e:
+        logger.error(f"Error calculating average time: {e}")
+        logger.info("Using default timeout of 50 seconds due to error")
+        return 50  # Default on error
 
 # Ensure the FastAPI app runs
 if __name__ == '__main__':
