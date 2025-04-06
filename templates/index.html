@@ -637,12 +637,53 @@
             background-color: #f5f5f5;
         }
 
-        /* Add strikethrough when feedback is not-ok */
-        .compared-video-entry:has(.feedback-btn.not-ok.selected) .result-text {
+        /* Update strikethrough styles for not-ok feedback */
+        .compared-video-entry:has(.feedback-btn.not-ok.selected) .result-text,
+        .compared-video-entry:has(.feedback-btn.not-ok.selected) .confidence-text {
             text-decoration: line-through;
             opacity: 0.7;
-            background-color: #ffebee;
             color: #f44336;
+            background-color: #ffebee;
+        }
+
+        /* Update styles for Not Cover when strikethrough */
+        .compared-video-entry:has(.feedback-btn.not-ok.selected) .result-text.not-cover {
+            color: #f44336;
+            background-color: #ffebee;
+        }
+
+        /* Keep Not Cover in grey when OK */
+        .compared-video-entry:has(.feedback-btn.ok.selected) .result-text.not-cover {
+            color: #666;
+            background-color: #f5f5f5;
+        }
+
+        /* Add styles for corrected result */
+        .strikethrough {
+            text-decoration: line-through;
+            opacity: 0.7;
+        }
+
+        .corrected-result {
+            color: #2196F3;
+            font-style: italic;
+            font-weight: 500;
+        }
+
+        .corrected-note {
+            color: #2196F3;
+            font-style: italic;
+            margin-left: 8px;
+            font-size: 0.9em;
+        }
+
+        /* Add styles for main result feedback */
+        .feedback-not-ok .result-text,
+        .feedback-not-ok .confidence-text {
+            text-decoration: line-through;
+            opacity: 0.7;
+            color: #f44336;
+            background-color: #ffebee;
         }
     </style>
 </head>
@@ -726,11 +767,7 @@
                 if (existingResult) {
                     // Show results immediately from CSV
                     resultDiv.style.display = 'block';
-                    detectionResultDiv.innerHTML = `
-                        <h3>Result:</h3>
-                        <p><strong>Result:</strong> ${existingResult.result}</p>
-                        <p><strong>Confidence:</strong> ${getConfidenceText(existingResult.score)}</p>
-                    `;
+                    displayResult(existingResult.result, existingResult.score, existingResult.feedback);
                     return;
                 }
 
@@ -790,11 +827,7 @@
                 setTimeout(() => {
                     progressContainer.style.display = 'none';
                     resultDiv.style.display = 'block';
-                    detectionResultDiv.innerHTML = `
-                        <h3>Result:</h3>
-                        <p><strong>Result:</strong> ${result}</p>
-                        <p><strong>Confidence:</strong> ${getConfidenceText(score)}</p>
-                    `;
+                    displayResult(result, score);
                 }, 1000);
                 
             } catch (error) {
@@ -880,8 +913,12 @@
                             </div>
                         </div>
                     </div>
-                    <p><strong>Result:</strong> <span class="result-text ${video.result === 'Cover' ? 'is-cover' : 'not-cover'}">${video.result}</span></p>
-                    <p><strong>Confidence:</strong> ${confidence}</p>
+                    <p><strong>Result:</strong> <span class="result-text ${video.result === 'Cover' ? 'is-cover' : 'not-cover'}">${video.result}</span>${
+                        video.feedback === 'not-ok' 
+                            ? ` → <em class="corrected-result">${video.result === 'Cover' ? 'Not Cover' : 'Cover'}</em>` 
+                            : ''
+                    }</p>
+                    <p><strong>Confidence:</strong> <span class="confidence-text">${confidence}</span>${video.feedback === 'not-ok' ? ' <em class="corrected-note">Manual review</em>' : ''}</p>
                     <div class="feedback-buttons">
                         <button class="feedback-btn ok ${video.feedback === 'ok' ? 'selected' : ''}" 
                                 onclick="submitFeedback('${video.url1}', '${video.url2}', 'ok', this)">
@@ -1134,6 +1171,31 @@
                 }
             } catch (err) {
                 console.error('Failed to paste URL:', err);
+            }
+        }
+
+        // Update the detection result display
+        function displayResult(result, score, feedback = null) {
+            const detectionResultDiv = document.getElementById('detection-result');
+            let resultClass = result === 'Cover' ? 'is-cover' : 'not-cover';
+            
+            detectionResultDiv.innerHTML = `
+                <h3>Result:</h3>
+                <p><strong>Result:</strong> <span class="result-text ${resultClass}">${result}</span>${
+                    feedback === 'not-ok' 
+                        ? ` → <em class="corrected-result">${result === 'Cover' ? 'Not Cover' : 'Cover'}</em>` 
+                        : ''
+                }</p>
+                <p><strong>Confidence:</strong> <span class="confidence-text">${getConfidenceText(score)}</span>${
+                    feedback === 'not-ok' ? ' <em class="corrected-note">Manual review</em>' : ''
+                }</p>
+            `;
+
+            // Add not-ok class to parent for strikethrough styling if feedback is not-ok
+            if (feedback === 'not-ok') {
+                detectionResultDiv.classList.add('feedback-not-ok');
+            } else {
+                detectionResultDiv.classList.remove('feedback-not-ok');
             }
         }
     </script>
