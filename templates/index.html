@@ -1002,6 +1002,7 @@
             const video2Input = document.getElementById('video2');
             const previewDiv = document.getElementById('preview');
             const resultDiv = document.getElementById('result');
+            const detectionResultDiv = document.getElementById('detection-result');
 
             // Load latest example from CSV
             try {
@@ -1031,9 +1032,16 @@
                 loadThumbnail(video2Input.value, 2);
             }, 100);
 
-            // Update thumbnails when URLs change
-            video1Input.addEventListener('input', debounce(() => loadThumbnail(video1Input.value, 1), 500));
-            video2Input.addEventListener('input', debounce(() => loadThumbnail(video2Input.value, 2), 500));
+            // Update thumbnails and hide results when URLs change
+            video1Input.addEventListener('input', debounce(() => {
+                loadThumbnail(video1Input.value, 1);
+                detectionResultDiv.innerHTML = '';  // Clear the result
+            }, 500));
+            
+            video2Input.addEventListener('input', debounce(() => {
+                loadThumbnail(video2Input.value, 2);
+                detectionResultDiv.innerHTML = '';  // Clear the result
+            }, 500));
 
             // Fetch initial compared videos
             fetchComparedVideos();
