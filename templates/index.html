@@ -693,12 +693,12 @@
             <h1>YouTube Cover Detector</h1>
             <div class="input-group">
                 <label for="video1">Video URL 1:</label>
-                <input type="text" id="video1" placeholder="Enter YouTube URL" value="https://www.youtube.com/watch?v=hLQl3WQQoQ0">
+                <input type="text" id="video1" placeholder="Enter YouTube URL">
                 <div class="paste-icon" onclick="pasteUrl('video1')" title="Paste from clipboard"></div>
             </div>
             <div class="input-group">
                 <label for="video2">Video URL 2:</label>
-                <input type="text" id="video2" placeholder="Enter YouTube URL" value="https://www.youtube.com/watch?v=HzC2-GJu1Q8">
+                <input type="text" id="video2" placeholder="Enter YouTube URL">
                 <div class="paste-icon" onclick="pasteUrl('video2')" title="Paste from clipboard"></div>
             </div>
             <button onclick="detectCover()">Check if Cover</button>
@@ -887,7 +887,10 @@
 
             videoListElement.innerHTML = accuracyHtml;
 
-            comparedVideos.forEach(video => {
+            // Reverse the array to show newest entries first
+            const reversedVideos = [...comparedVideos].reverse();
+
+            reversedVideos.forEach(video => {
                 const videoId1 = extractVideoId(video.url1);
                 const videoId2 = extractVideoId(video.url2);
                 const confidence = getConfidenceText(video.score);
@@ -981,16 +984,26 @@
             return (match && match[2].length === 11) ? match[2] : null;
         }
 
-        // Call the function to fetch and render the list on page load
-        fetchComparedVideos();
-
-        // Remove both existing DOMContentLoaded event listeners and replace with this one
-        document.addEventListener('DOMContentLoaded', function() {
+        // Update initialization in DOMContentLoaded
+        document.addEventListener('DOMContentLoaded', async function() {
             // Initialize variables
             const video1Input = document.getElementById('video1');
             const video2Input = document.getElementById('video2');
             const previewDiv = document.getElementById('preview');
             const resultDiv = document.getElementById('result');
+
+            // Load latest example from CSV
+            try {
+                const response = await fetch('/api/compared-videos');
+                const comparedVideos = await response.json();
+                if (comparedVideos.length > 0) {
+                    const latestExample = comparedVideos[comparedVideos.length - 1];
+                    video1Input.value = latestExample.url1;
+                    video2Input.value = latestExample.url2;
+                }
+            } catch (error) {
+                console.error('Error loading latest example:', error);
+            }
 
             // Initialize preview div structure
             previewDiv.innerHTML = `
@@ -1180,7 +1193,6 @@
             let resultClass = result === 'Cover' ? 'is-cover' : 'not-cover';
             
             detectionResultDiv.innerHTML = `
-                <h3>Result:</h3>
                 <p><strong>Result:</strong> <span class="result-text ${resultClass}">${result}</span>${
                     feedback === 'not-ok' 
                         ? ` → <em class="corrected-result">${result === 'Cover' ? 'Not Cover' : 'Cover'}</em>` 
