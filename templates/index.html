@@ -792,15 +792,17 @@
             detectionResultDiv.innerHTML = '<div class="loading">Processing videos...</div>';
 
             let progressInterval;
+            let timeoutExtension;
+            let extensionCount = 0;
             
             try {
                 // If not found in CSV, continue with full analysis
                 const progressContainer = document.getElementById('progress-container');
                 progressContainer.style.display = 'block';
-                detectionResultDiv.innerHTML = '';  // Only clear the result text, not the thumbnails
+                detectionResultDiv.innerHTML = '';
                 
                 let startTime = Date.now();
-                const totalExpectedTime = 50; // Changed to 50 seconds total
+                let totalExpectedTime = 50; // seconds total
                 const updateInterval = 1000; // Update every second
                 
                 progressInterval = setInterval(() => {
@@ -808,11 +810,26 @@
                     let timeRemaining = Math.max(0, Math.ceil(totalExpectedTime - elapsed));
                     
                     // Calculate progress percentage based on elapsed time
-                    let percent = Math.min(95, (elapsed / totalExpectedTime) * 100);
+                    let percent = Math.min(99, (elapsed / totalExpectedTime) * 100);
                     
                     // Update status message based on progress
                     let status;
-                    if (elapsed <= 8) {
+                    if (timeRemaining === 0 || totalExpectedTime === 20) {  // Initial timeout or already in extension mode
+                        if (timeRemaining === 0) {  // Reset the timer
+                            // Calculate proper starting progress: 50/(50+20) ≈ 0.71
+                            const initialProgress = totalExpectedTime / (totalExpectedTime + 20);  // About 71%
+                            startTime = Date.now();
+                            totalExpectedTime = 20;
+                            startTime = Date.now() - ((totalExpectedTime * initialProgress) * 1000);
+                            elapsed = (Date.now() - startTime) / 1000;
+                            timeRemaining = Math.max(0, Math.ceil(totalExpectedTime - elapsed));
+                        }
+                        status = "Oops, still working on it...";
+                        // Calculate new percentage based on remaining portion
+                        const extendedPercent = 71 + ((elapsed / totalExpectedTime) * 28); // Progress from 71% to 99%
+                        updateProgress(Math.min(99, extendedPercent), status, timeRemaining);
+                        return;
+                    } else if (elapsed <= 8) {
                         status = 'Initializing...';
                     } else if (elapsed <= 20) {
                         status = 'Downloading files...';
@@ -822,7 +839,7 @@
                         status = 'Generating embeddings...';
                     }
                     
-                    updateProgress(percent, status, timeRemaining);
+                    updateProgress(percent, status, timeRemaining > 0 ? timeRemaining : null);
                     
                 }, updateInterval);
 
@@ -846,6 +863,9 @@
                 fetchComparedVideos();
 
                 clearInterval(progressInterval);
+                if (timeoutExtension) {
+                    clearTimeout(timeoutExtension);
+                }
                 updateProgress(100, 'Complete!');
                 
                 setTimeout(() => {
@@ -857,6 +877,9 @@
             } catch (error) {
                 console.error('Error details:', error);
                 clearInterval(progressInterval);
+                if (timeoutExtension) {
+                    clearTimeout(timeoutExtension);
+                }
                 progressContainer.style.display = 'none';
                 resultDiv.style.display = 'block';
                 detectionResultDiv.innerHTML = `<p class="error">Error: ${error.message}</p>`;
