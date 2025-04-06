@@ -816,7 +816,7 @@
                         (v.url1 === video1Input.value && v.url2 === video2Input.value) ||
                         (v.url1 === video2Input.value && v.url2 === video1Input.value)
                     );
-                    displayResult(video.result, video.score);
+                    displayResult(video.result, video.score, video.feedback);
                     return;
                 }
             } catch (error) {
@@ -1008,7 +1008,21 @@
                 setTimeout(() => {
                     progressContainer.style.display = 'none';
                     resultDiv.style.display = 'block';
-                    displayResult(data.result, data.score, data.feedback);
+                    // Get the latest feedback state for this comparison
+                    fetch('/api/compared-videos')
+                        .then(r => r.json())
+                        .then(videos => {
+                            const latestResult = videos.find(v => 
+                                (v.url1 === video1Input.value && v.url2 === video2Input.value) ||
+                                (v.url1 === video2Input.value && v.url2 === video1Input.value)
+                            );
+                            displayResult(data.result, data.score, latestResult?.feedback);
+                        })
+                        .catch(err => {
+                            console.error('Error getting feedback state:', err);
+                            displayResult(data.result, data.score);
+                        });
+                    
                     // Re-enable the compare button after successful completion
                     compareButton.disabled = false;
                     compareButton.style.opacity = '1';
@@ -1443,21 +1457,26 @@
         // Update the detection result display
         function displayResult(result, score, feedback = null) {
             const detectionResultDiv = document.getElementById('detection-result');
-            let resultClass = result === 'Cover' ? 'is-cover' : 'not-cover';
+            const confidence = getConfidenceText(score);
+            const isNotOk = feedback === 'not-ok';
+            const correctedResult = result === 'Cover' ? 'Not Cover' : 'Cover';
             
             detectionResultDiv.innerHTML = `
-                <p><strong>Result:</strong> <span class="result-text ${resultClass}">${result}</span>${
-                    feedback === 'not-ok' 
-                        ? ` → <em class="corrected-result">${result === 'Cover' ? 'Not Cover' : 'Cover'}</em>` 
-                        : ''
-                }</p>
-                <p><strong>Confidence:</strong> <span class="confidence-text">${getConfidenceText(score)}</span>${
-                    feedback === 'not-ok' ? ' <em class="corrected-note">Manual review</em>' : ''
-                }</p>
+                <h3>Detection Result</h3>
+                <p>
+                    <strong>Result:</strong> 
+                    <span class="result-text ${result === 'Cover' ? 'is-cover' : 'not-cover'}">${result}</span>
+                    ${isNotOk ? ` → <em class="corrected-result">${correctedResult}</em>` : ''}
+                </p>
+                <p>
+                    <strong>Confidence:</strong> 
+                    <span class="confidence-text">${confidence}</span>
+                    ${isNotOk ? ' <em class="corrected-note">Manual review</em>' : ''}
+                </p>
             `;
-
-            // Add not-ok class to parent for strikethrough styling if feedback is not-ok
-            if (feedback === 'not-ok') {
+            
+            // Add feedback-not-ok class to parent for consistent styling
+            if (isNotOk) {
                 detectionResultDiv.classList.add('feedback-not-ok');
             } else {
                 detectionResultDiv.classList.remove('feedback-not-ok');
