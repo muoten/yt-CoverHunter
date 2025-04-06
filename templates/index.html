@@ -1177,45 +1177,69 @@
                         <div class="thumbnail-label">Video ${containerNumber}</div>
                     `;
 
+                    // Wait for YouTube API to be ready
+                    await new Promise((resolve) => {
+                        if (window.YT && window.YT.Player) {
+                            resolve();
+                        } else {
+                            window.onYouTubeIframeAPIReady = resolve;
+                        }
+                    });
+
                     // Create player immediately but keep it paused
-                    const player = new YT.Player(`player-${containerNumber}`, {
-                        videoId: videoId,
-                        playerVars: {
-                            autoplay: 0,
-                            controls: 0,
-                            mute: 1,
-                            playsinline: 1,
-                            rel: 0,
-                            showinfo: 0,
-                            start: 0
-                        }
-                    });
-
-                    // Initialize player when hovering
-                    thumbnailContainer.addEventListener('mouseenter', () => {
-                        if (player && player.playVideo) {
-                            player.playVideo();
-                        }
-                    });
-
-                    // Pause when mouse leaves
-                    thumbnailContainer.addEventListener('mouseleave', () => {
-                        if (player && player.pauseVideo) {
-                            player.pauseVideo();
-                        }
-                    });
-
-                    // Add click handler for unmuting
-                    thumbnailContainer.addEventListener('click', async () => {
-                        if (player && player.unMute) {
-                            try {
-                                player.unMute();
-                                player.setVolume(50);
-                            } catch (error) {
-                                console.error('Error unmuting:', error);
+                    try {
+                        let player = new YT.Player(`player-${containerNumber}`, {
+                            videoId: videoId,
+                            playerVars: {
+                                autoplay: 0,
+                                controls: 0,
+                                mute: 1,
+                                playsinline: 1,
+                                rel: 0,
+                                showinfo: 0,
+                                start: 0
                             }
-                        }
-                    });
+                        });
+
+                        // Store player reference
+                        thumbnailContainer.dataset.player = `player-${containerNumber}`;
+
+                        // Initialize player when hovering
+                        thumbnailContainer.addEventListener('mouseenter', async () => {
+                            const currentPlayer = YT.get(thumbnailContainer.dataset.player);
+                            if (currentPlayer && currentPlayer.playVideo) {
+                                try {
+                                    await currentPlayer.playVideo();
+                                } catch (error) {
+                                    console.error('Error playing video:', error);
+                                }
+                            }
+                        });
+
+                        // Pause when mouse leaves
+                        thumbnailContainer.addEventListener('mouseleave', () => {
+                            const currentPlayer = YT.get(thumbnailContainer.dataset.player);
+                            if (currentPlayer && currentPlayer.pauseVideo) {
+                                currentPlayer.pauseVideo();
+                            }
+                        });
+
+                        // Add click handler for unmuting
+                        thumbnailContainer.addEventListener('click', async () => {
+                            const currentPlayer = YT.get(thumbnailContainer.dataset.player);
+                            if (currentPlayer && currentPlayer.unMute) {
+                                try {
+                                    currentPlayer.unMute();
+                                    currentPlayer.setVolume(50);
+                                } catch (error) {
+                                    console.error('Error unmuting:', error);
+                                }
+                            }
+                        });
+                    } catch (error) {
+                        console.error('Error creating player:', error);
+                        return;
+                    }
                 }
             } catch (error) {
                 console.error('Error loading thumbnail:', error);
