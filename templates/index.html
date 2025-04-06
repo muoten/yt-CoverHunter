@@ -785,6 +785,18 @@
             const resultDiv = document.getElementById('result');
             const detectionResultDiv = document.getElementById('detection-result');
 
+            // Define constants at function scope so they're available everywhere
+            let initialExpectedTime = 50; // seconds total
+            let totalExpectedTime = initialExpectedTime; // current expected time
+            const MAX_TOTAL_TIME = Math.ceil(initialExpectedTime * 1.1); // Maximum allowed time in seconds
+            let isInExtension = false; // Track if we're in extension mode
+            
+            // Create AbortController for the fetch request
+            const controller = new AbortController();
+            const signal = controller.signal;
+            let abortTimeout;
+            let isAborting = false; // Flag to coordinate abort actions
+
             // Check if URLs are valid
             if (!video1Input.value || !video2Input.value) {
                 alert('Please enter both video URLs');
@@ -810,37 +822,69 @@
             let extensionCount = 0;
             
             try {
-                // If not found in CSV, continue with full analysis
                 const progressContainer = document.getElementById('progress-container');
                 progressContainer.style.display = 'block';
                 detectionResultDiv.innerHTML = '';
                 
+                // Set up abort timeout
+                abortTimeout = setTimeout(() => {
+                    if (!isAborting) {
+                        isAborting = true;
+                        controller.abort();
+                        progressContainer.style.display = 'none';
+                        resultDiv.style.display = 'block';
+                        detectionResultDiv.innerHTML = `
+                            <p class="error">Request cancelled: Processing was taking longer than ${MAX_TOTAL_TIME} seconds.
+                            The server might be experiencing high load. Please try again later.</p>`;
+                    }
+                }, MAX_TOTAL_TIME * 1000);
+
                 let startTime = Date.now();
-                let totalExpectedTime = 50; // seconds total
                 const updateInterval = 1000; // Update every second
+                const startTimeGlobal = Date.now(); // Keep track of total time
+                
+                // Create a flag to track if request was aborted
+                let wasAborted = false;
                 
                 progressInterval = setInterval(() => {
                     let elapsed = (Date.now() - startTime) / 1000;
+                    let totalElapsed = (Date.now() - startTimeGlobal) / 1000;
                     let timeRemaining = Math.max(0, Math.ceil(totalExpectedTime - elapsed));
+                    
+                    // Check if we've exceeded maximum time
+                    if (totalElapsed > MAX_TOTAL_TIME) {
+                        if (!isAborting) {
+                            isAborting = true;
+                            clearInterval(progressInterval);
+                            controller.abort();
+                        }
+                        return;
+                    }
                     
                     // Calculate progress percentage based on elapsed time
                     let percent = Math.min(99, (elapsed / totalExpectedTime) * 100);
                     
                     // Update status message based on progress
                     let status;
-                    if (timeRemaining === 0 || totalExpectedTime === 20) {  // Initial timeout or already in extension mode
+                    if (timeRemaining === 0) {  // Need to extend time
                         if (timeRemaining === 0) {  // Reset the timer
                             // Calculate proper starting progress: 50/(50+20) ≈ 0.71
-                            const initialProgress = totalExpectedTime / (totalExpectedTime + 20);  // About 71%
+                            const initialProgress = initialExpectedTime / (initialExpectedTime + 20);  // About 71%
                             startTime = Date.now();
                             totalExpectedTime = 20;
                             startTime = Date.now() - ((totalExpectedTime * initialProgress) * 1000);
                             elapsed = (Date.now() - startTime) / 1000;
                             timeRemaining = Math.max(0, Math.ceil(totalExpectedTime - elapsed));
+                            isInExtension = true;
                         }
                         status = "Oops, still working on it...";
                         // Calculate new percentage based on remaining portion
                         const extendedPercent = 71 + ((elapsed / totalExpectedTime) * 28); // Progress from 71% to 99%
+                        updateProgress(Math.min(99, extendedPercent), status, timeRemaining);
+                        return;
+                    } else if (isInExtension) {
+                        status = "Oops, still working on it...";
+                        const extendedPercent = 71 + ((elapsed / totalExpectedTime) * 28);
                         updateProgress(Math.min(99, extendedPercent), status, timeRemaining);
                         return;
                     } else if (elapsed <= 8) {
@@ -857,16 +901,29 @@
                     
                 }, updateInterval);
 
-                const startResponse = await fetch(API_URL + '/check-if-cover', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        video_url1: video1Input.value,
-                        video_url2: video2Input.value
-                    })
-                });
+                let startResponse;
+                try {
+                    startResponse = await fetch(API_URL + '/check-if-cover', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            video_url1: video1Input.value,
+                            video_url2: video2Input.value
+                        }),
+                        signal
+                    });
+
+                    if (!isAborting) {
+                        clearTimeout(abortTimeout);
+                    }
+                } catch (error) {
+                    if (isAborting) {
+                        throw new Error('Request cancelled due to timeout. Server might be experiencing high load. Please try again later.');
+                    }
+                    throw error;
+                }
                 
                 if (!startResponse.ok) {
                     throw new Error('Failed to start detection process');
@@ -889,14 +946,26 @@
                 }, 1000);
                 
             } catch (error) {
+                // Clear the abort timeout if it exists
+                if (abortTimeout) {
+                    clearTimeout(abortTimeout);
+                }
                 console.error('Error details:', error);
                 clearInterval(progressInterval);
                 if (timeoutExtension) {
                     clearTimeout(timeoutExtension);
                 }
+                const progressContainer = document.getElementById('progress-container');
                 progressContainer.style.display = 'none';
                 resultDiv.style.display = 'block';
-                detectionResultDiv.innerHTML = `<p class="error">Error: ${error.message}</p>`;
+                if (error.name === 'AbortError') {
+                    detectionResultDiv.innerHTML = `
+                        <p class="error">Request cancelled: Processing was taking longer than ${MAX_TOTAL_TIME} seconds.
+                        The server might be experiencing high load. Please try again later.</p>`;
+                } else {
+                    console.error('Error details:', error);
+                    detectionResultDiv.innerHTML = `<p class="error">Error: ${error.message}</p>`;
+                }
             }
         }
 
