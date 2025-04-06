@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.openapi.docs import get_swagger_ui_html
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -33,6 +33,8 @@ from app.youtube_cover_detector import (
     cover_detection as youtube_cover_detection
 )
 from app.parse_config import config
+from contextlib import suppress
+from app.youtube_cover_detector import CoverDetector, cleanup_temp_files, logger
 
 #First version that works! Though it takes more than 3 minutes to run in fly.dev free tier
 YT_DLP_USE_COOKIES = os.getenv('YT_DLP_USE_COOKIES', False)
@@ -229,8 +231,19 @@ class VideoRequest(BaseModel):
     video_url1: str
     video_url2: str
 
+    @validator('video_url1', 'video_url2')
+    def validate_urls(cls, v):
+        if not v.startswith('http'):
+            raise ValueError('URL must start with http')
+        if 'youtube.com' not in v and 'youtu.be' not in v:
+            raise ValueError('Must be a YouTube URL')
+        return v
+
 # Add API router
 api_router = APIRouter()  # Remove prefix to match existing frontend paths
+
+# Store active tasks
+active_tasks: Dict[str, asyncio.Task] = {}
 
 # Add API endpoints
 @api_router.post("/api/detect-cover")
@@ -245,8 +258,17 @@ async def detect_cover(request: VideoRequest, background_tasks: BackgroundTasks)
         "error": None
     }
     
-    # Add the task to background processing
-    background_tasks.add_task(process_video, request.video_url1, request.video_url2, task_id)
+    # Cancel any existing task for these videos
+    video_key = f"{request.video_url1}_{request.video_url2}"
+    if video_key in active_tasks:
+        active_tasks[video_key].cancel()
+        with suppress(asyncio.CancelledError):
+            await active_tasks[video_key]
+        del active_tasks[video_key]
+    
+    # Store the task so it can be cancelled if needed
+    task = asyncio.create_task(process_video(request.video_url1, request.video_url2))
+    active_tasks[video_key] = task
     
     return {"task_id": task_id, "status": "processing"}
 
@@ -309,7 +331,7 @@ async def get_thumbnails_options():
         }
     )
 
-async def process_video(video_url1: str, video_url2: str, task_id: str):
+async def process_video(video_url1: str, video_url2: str):
     try:
         logger.info(f"Processing videos: {video_url1}, {video_url2}")
         # Clean up old files first
@@ -318,13 +340,13 @@ async def process_video(video_url1: str, video_url2: str, task_id: str):
         detector = YoutubeCoverDetector()
         result = await detector.detect_cover(video_url1, video_url2)
         
-        detection_results[task_id] = {
+        detection_results[video_url1 + "_" + video_url2] = {
             "status": "completed",
             "result": result,
             "error": None
         }
     except Exception as e:
-        detection_results[task_id] = {
+        detection_results[video_url1 + "_" + video_url2] = {
             "status": "failed",
             "error": str(e),
             "result": None
@@ -442,59 +464,50 @@ async def detect_cover_route(request: Request):
     return JSONResponse(content={'result': result, 'score': score}) """
 
 @app.post("/api/check-if-cover")
-async def cover_detection_endpoint(request: Request):
-    data = await request.json()
-    youtube_url1 = data.get('video_url1')
-    youtube_url2 = data.get('video_url2')
+async def check_if_cover(request: VideoRequest, background_tasks: BackgroundTasks):
+    video_key = f"{request.video_url1}_{request.video_url2}"
     
-    logger.debug(f"Received request for URLs: {youtube_url1} and {youtube_url2}")
+    logger.info(f"Starting cover detection for videos: {request.video_url1} and {request.video_url2}")
     
-    if not youtube_url1 or not youtube_url2:
-        raise HTTPException(status_code=400, detail="Both youtube_url1 and youtube_url2 parameters are required")
-
+    # Cancel any existing task for these videos
+    if video_key in active_tasks:
+        active_tasks[video_key].cancel()
+        with suppress(asyncio.CancelledError):
+            await active_tasks[video_key]
+        del active_tasks[video_key]
+    
+    # Store the task so it can be cancelled if needed
+    task = asyncio.create_task(process_videos(request.video_url1, request.video_url2))
+    active_tasks[video_key] = task
+    
     try:
-        # Get the WAV file paths
-        video_id1 = extract_video_id(youtube_url1)
-        video_id2 = extract_video_id(youtube_url2)
-        
-        wav_path1 = f"/tmp/youtube_cover_detector_api_wav/{video_id1}.wav"
-        wav_path2 = f"/tmp/youtube_cover_detector_api_wav/{video_id2}.wav"
-        print(f"WAV file paths: {wav_path1}, {wav_path2}")
-        
-        # Generate audio if needed
-        if not os.path.exists(wav_path1):
-            logger.debug(f"Generating audio for {video_id1}")
-            from app.youtube_cover_detector import _generate_audio_from_youtube_id
-            _generate_audio_from_youtube_id(video_id1)
-        
-        if not os.path.exists(wav_path2):
-            logger.debug(f"Generating audio for {video_id2}")
-            from app.youtube_cover_detector import _generate_audio_from_youtube_id
-            _generate_audio_from_youtube_id(video_id2)
-        
-        # Call cover_detection and get the actual values
-        result = cover_detection(youtube_url1, youtube_url2)
-        # Handle empty or invalid distance values
-        try:
-            distance = float(result["distance"]) if result["distance"] else 0.0
-        except (ValueError, TypeError):
-            logger.warning(f"Invalid distance value: {result['distance']}, defaulting to 0.0")
-            distance = 0.0
-
-        is_cover = result["is_cover"]
-        result_text = "Cover" if is_cover else "Not Cover"
-        
-        # Write to CSV with the actual values
-        logger.debug(f"Writing result to CSV: Distance={distance}, Result={result_text}")
-        write_compared_video(youtube_url1, youtube_url2, result_text, distance)
-        
-        return {
-            "result": result_text,
-            "score": distance
-        }
+        result = await asyncio.wait_for(task, timeout=config['REQUEST_TIMEOUT'])
+        del active_tasks[video_key]
+        return result
+    except asyncio.TimeoutError:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+        del active_tasks[video_key]
+        if config['CLEANUP_ON_TIMEOUT']:
+            cleanup_temp_files(request.video_url1, request.video_url2)
+        raise HTTPException(status_code=408, detail="Request timeout")
     except Exception as e:
-        logger.error(f"Error in cover detection: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error in check_if_cover: {str(e)}")
+        logger.exception(e)  # This will log the full traceback
+        if video_key in active_tasks:
+            active_tasks[video_key].cancel()
+            del active_tasks[video_key]
+        raise HTTPException(status_code=500, detail=f"Failed to start detection process: {str(e)}")
+
+async def process_videos(url1: str, url2: str):
+    detector = CoverDetector()
+    try:
+        return await detector.compare_videos(url1, url2)
+    except Exception as e:
+        logger.error(f"Error in process_videos: {str(e)}")
+        logger.exception(e)  # This will log the full traceback
+        raise HTTPException(status_code=500, detail=f"Error processing videos: {str(e)}")
 
 def reset_compared_videos():
     """Reset the CSV file by creating a new empty file with just the header"""
@@ -628,6 +641,16 @@ def _generate_audio_from_youtube_id(youtube_id):
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
         raise
+
+@app.post("/api/cleanup")
+async def cleanup_request(request: VideoRequest):
+    video_key = f"{request.video_url1}_{request.video_url2}"
+    if video_key in active_tasks:
+        active_tasks[video_key].cancel()
+        with suppress(asyncio.CancelledError):
+            await active_tasks[video_key]
+        del active_tasks[video_key]
+    return {"status": "cleaned"}
 
 if __name__ == '__main__':
     import uvicorn

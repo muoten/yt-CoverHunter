@@ -791,6 +791,20 @@
             const video2Input = document.getElementById('video2');
             const resultDiv = document.getElementById('result');
             const detectionResultDiv = document.getElementById('detection-result');
+            const progressContainer = document.getElementById('progress-container');
+            const compareButton = document.querySelector('.input-section button');
+            
+            console.log("Starting detection with URLs:", video1Input.value, video2Input.value);
+            
+            if (!video1Input.value || !video2Input.value) {
+                detectionResultDiv.innerHTML = '<p class="error">Please enter both video URLs</p>';
+                return;
+            }
+
+            // Disable the compare button
+            compareButton.disabled = true;
+            compareButton.style.opacity = '0.7';
+            compareButton.style.cursor = 'not-allowed';
 
             // Define constants at function scope so they're available everywhere
             let initialExpectedTime = 50; // seconds total
@@ -799,16 +813,14 @@
             let isInExtension = false; // Track if we're in extension mode
             
             // Create AbortController for the fetch request
-            const controller = new AbortController();
-            const signal = controller.signal;
+            let controller = new AbortController();
             let abortTimeout;
             let isAborting = false; // Flag to coordinate abort actions
 
-            // Check if URLs are valid
-            if (!video1Input.value || !video2Input.value) {
-                alert('Please enter both video URLs');
-                return;
-            }
+            // Reset abort controller
+            controller = new AbortController();
+            const { signal } = controller;
+            isAborting = false;
 
             // Check if result exists in CSV
             const existingResult = await checkExistingResult(video1Input.value, video2Input.value);
@@ -834,10 +846,25 @@
                 detectionResultDiv.innerHTML = '';
                 
                 // Set up abort timeout
-                abortTimeout = setTimeout(() => {
+                abortTimeout = setTimeout(async () => {
                     if (!isAborting) {
                         isAborting = true;
                         controller.abort();
+                        // Send cleanup request to server
+                        try {
+                            await fetch(`${API_URL}/cleanup`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                    video_url1: video1Input.value,
+                                    video_url2: video2Input.value
+                                })
+                            });
+                        } catch (error) {
+                            console.error('Cleanup request failed:', error);
+                        }
                         progressContainer.style.display = 'none';
                         resultDiv.style.display = 'block';
                         detectionResultDiv.innerHTML = `
@@ -910,7 +937,7 @@
 
                 let startResponse;
                 try {
-                    startResponse = await fetch(API_URL + '/check-if-cover', {
+                    startResponse = await fetch(`${API_URL}/check-if-cover`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -933,10 +960,12 @@
                 }
                 
                 if (!startResponse.ok) {
+                    const errorText = await startResponse.text();
+                    console.error("Server error response:", errorText);
                     throw new Error('Failed to start detection process');
                 }
 
-                const { result, score } = await startResponse.json();
+                const data = await startResponse.json();
                 
                 fetchComparedVideos();
 
@@ -949,7 +978,11 @@
                 setTimeout(() => {
                     progressContainer.style.display = 'none';
                     resultDiv.style.display = 'block';
-                    displayResult(result, score);
+                    displayResult(data.result, data.score, data.feedback);
+                    // Re-enable the compare button after successful completion
+                    compareButton.disabled = false;
+                    compareButton.style.opacity = '1';
+                    compareButton.style.cursor = 'pointer';
                 }, 1000);
                 
             } catch (error) {
@@ -957,7 +990,7 @@
                 if (abortTimeout) {
                     clearTimeout(abortTimeout);
                 }
-                console.error('Error details:', error);
+                console.error("Full error details:", error);
                 clearInterval(progressInterval);
                 if (timeoutExtension) {
                     clearTimeout(timeoutExtension);
@@ -965,8 +998,7 @@
                 const progressContainer = document.getElementById('progress-container');
                 progressContainer.style.display = 'none';
                 resultDiv.style.display = 'block';
-                // Reset button state
-                const compareButton = document.querySelector('.input-section button');
+                // Re-enable the compare button on error
                 compareButton.disabled = false;
                 compareButton.style.opacity = '1';
                 compareButton.style.cursor = 'pointer';
@@ -979,6 +1011,11 @@
                     console.error('Error details:', error);
                     detectionResultDiv.innerHTML = `<p class="error">Error: ${error.message}</p>`;
                 }
+            } finally {
+                // Always make sure the button is re-enabled
+                compareButton.disabled = false;
+                compareButton.style.opacity = '1';
+                compareButton.style.cursor = 'pointer';
             }
         }
 

@@ -22,6 +22,7 @@ import csv
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import io
+from typing import Dict, Any
 
 THRESHOLD = config['THRESHOLD']
 
@@ -481,6 +482,79 @@ def extract_video_id(url):
     except Exception as e:
         logger.error(f"Error extracting video ID from {url}: {e}")
         return url
+
+def cleanup_temp_files(url1: str, url2: str):
+    """Remove temporary WAV files for the given video URLs."""
+    wav_folder = config['WAV_FOLDER']
+    for url in [url1, url2]:
+        video_id = url.split("v=")[-1]
+        wav_path = os.path.join(wav_folder, f"{video_id}.wav")
+        if os.path.exists(wav_path):
+            try:
+                os.remove(wav_path)
+            except Exception as e:
+                logger.error(f"Error cleaning up {wav_path}: {e}")
+
+class CoverDetector:
+    def __init__(self):
+        self.threshold = config['THRESHOLD']
+        self.wav_folder = config['WAV_FOLDER']
+        self.model_folder = config['MODEL_FOLDER']
+        self.coverhunter_folder = config['COVERHUNTER_FOLDER']
+        self.scores_csv_file = config['SCORES_CSV_FILE']
+        self.vectors_csv_file = config['VECTORS_CSV_FILE']
+        self.process_only_first_n_seconds = config['PROCESS_ONLY_FIRST_N_SECONDS']
+        
+    async def compare_videos(self, url1: str, url2: str) -> Dict[str, Any]:
+        try:
+            # Download and process videos
+            if asyncio.current_task().cancelled():
+                raise asyncio.CancelledError()
+            
+            video_id1 = extract_video_id(url1)
+            wav1 = _generate_audio_from_youtube_id(video_id1)
+            if asyncio.current_task().cancelled():
+                raise asyncio.CancelledError()
+            
+            video_id2 = extract_video_id(url2)
+            wav2 = _generate_audio_from_youtube_id(video_id2)
+            if asyncio.current_task().cancelled():
+                raise asyncio.CancelledError()
+            
+            # Get WAV file paths
+            wav_path1 = os.path.join(self.wav_folder, wav1)
+            wav_path2 = os.path.join(self.wav_folder, wav2)
+            
+            # Generate embeddings
+            embeddings = _generate_embeddings_from_filepaths(wav_path1, wav_path2)
+            keys = list(embeddings.keys())
+            embedding1 = embeddings[keys[0]]
+            embedding2 = embeddings[keys[1]]
+            
+            # Calculate distance and determine if it's a cover
+            distance = _cosine_distance(embedding1, embedding2)
+            is_cover = distance < self.threshold
+            
+            result = "Cover" if is_cover else "Not Cover"
+            
+            # Write result to CSV
+            write_compared_video(url1, url2, result, distance)
+            
+            return {"result": result, "score": float(distance)}  # Convert numpy.float32 to Python float
+            
+        except Exception as e:
+            logger.error(f"Error comparing videos: {e}")
+            raise
+
+    def cleanup_temp_files(self, url1: str, url2: str):
+        for url in [url1, url2]:
+            video_id = url.split("v=")[-1]
+            wav_path = os.path.join(self.wav_folder, f"{video_id}.wav")
+            if os.path.exists(wav_path):
+                try:
+                    os.remove(wav_path)
+                except Exception as e:
+                    logger.error(f"Error cleaning up {wav_path}: {e}")
 
 # Ensure the FastAPI app runs
 if __name__ == '__main__':
