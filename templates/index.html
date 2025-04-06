@@ -108,6 +108,17 @@
             margin: 20px auto;
             display: block;
             flex: none;
+            background: linear-gradient(45deg, #2196F3, #1976D2);
+            color: white;
+            box-shadow: 0 2px 4px rgba(33, 150, 243, 0.2);
+            transition: all 0.2s ease;
+            border-radius: 8px;
+            padding: 12px 24px;
+        }
+
+        .main-content > button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(33, 150, 243, 0.3);
         }
 
         button:active {
@@ -701,7 +712,7 @@
                 <input type="text" id="video2" placeholder="Enter YouTube URL">
                 <div class="paste-icon" onclick="pasteUrl('video2')" title="Paste from clipboard"></div>
             </div>
-            <button onclick="detectCover()">Check if Cover</button>
+            <button onclick="detectCover()">Compare Videos</button>
             
             <!-- Progress and Results Section -->
             <div id="progress-container" class="progress-container" style="display: none;">
