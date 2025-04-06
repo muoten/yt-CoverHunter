@@ -31,8 +31,8 @@ WAV_FOLDER = config['WAV_FOLDER']
 CQT_FEAT_DIR = Path(WAV_FOLDER) / "cqt_feat"
 CQT_FEAT_DIR.mkdir(exist_ok=True, parents=True)
 
-CSV_FILE = '/tmp/compared_videos.csv'
-
+#CSV_FILE = '/tmp/compared_videos.csv'
+CSV_FILE = config['SCORES_CSV_FILE']
 # Initialize FastAPI app
 app = FastAPI()
 
@@ -103,7 +103,10 @@ def _generate_audio_from_youtube_id(youtube_id):
         
         # Use ffmpeg with more detailed output
         # extract first 10 seconds
-        ffmpeg_cmd = f'ffmpeg -y -i "{mp3_path}" -ac 1 -ar 16000 -t 10 "{wav_path}" 2>&1'
+        if config['PROCESS_ONLY_FIRST_N_SECONDS'] > 0:
+            ffmpeg_cmd = f'ffmpeg -y -i "{mp3_path}" -ac 1 -ar 16000 -t {config["EXTRACT_ONLY_FIRST_N_SECONDS"]} "{wav_path}" 2>&1'
+        else:
+            ffmpeg_cmd = f'ffmpeg -y -i "{mp3_path}" -ac 1 -ar 16000 "{wav_path}" 2>&1'
         logger.info(f"Running ffmpeg command: {ffmpeg_cmd}")
         conversion_output = os.popen(ffmpeg_cmd).read()
         logger.info(f"FFmpeg output: {conversion_output}")
@@ -147,12 +150,9 @@ def _generate_dataset_txt_from_files(filename1, filename2):
 def _generate_embeddings_from_filepaths(audio_path1, audio_path2):
 	COVERHUNTER_FOLDER = config['COVERHUNTER_FOLDER']
 	MODEL_FOLDER = config['MODEL_FOLDER']
-	#MODEL_FOLDER = WAV_FOLDER
 	os.system(f"mkdir -p {WAV_FOLDER}")
-	#os.system(f"cp {WAV_FOLDER}/sp_aug.txt {WAV_FOLDER}/sp_aug.txt.bak")
 	os.system(f"rm -f {WAV_FOLDER}/*.txt")
 	_generate_dataset_txt_from_files(audio_path1, audio_path2)
-	#os.system(f"touch {WAV_FOLDER}/sp_aug.txt")
 	os.system(f"cp {WAV_FOLDER}/dataset.txt {WAV_FOLDER}/sp_aug.txt")
 	os.system(f"rm -rf {WAV_FOLDER}/cqt_feat/")
 	os.system(f"rm -rf {WAV_FOLDER}/sp_wav/")
@@ -192,30 +192,6 @@ def prepare_cover_detection(youtube_url1, youtube_url2):
 
     return audio1, audio2
     
-""" def cover_detection(audio1, audio2):
-    # generate the embeddings
-    embeddings = _generate_embeddings_from_filepaths(audio1, audio2)
-    # embeddings is a dictionary
-    # get the keys
-    keys = list(embeddings.keys())
-    # get the embeddings
-    embeddings1 = embeddings[keys[0]]
-    embeddings2 = embeddings[keys[1]]
-    # get the distance between the embeddings
-    distance = _cosine_distance(embeddings1, embeddings2)
-
-    # Determine if the videos are covers
-    is_cover = distance < THRESHOLD
-    result = "Cover" if is_cover else "Not Cover"
-
-    distance = round(distance, 2)
-    # Log and write the result to the CSV
-    logger.debug(f"Distance: {distance}, Result: {result}")
-    
-    write_compared_video(audio1, audio2, result, distance)
-
-    return distance """
-
 
 def _debug_cover_detection():
   
@@ -363,6 +339,27 @@ async def process_videos(video_ids):
 # Usage
 # asyncio.run(process_videos(['video_id1', 'video_id2']))
 
+# apart from the current csv file, we will also save another csv file named "vectors.csv" with key the youtube id and value the embeddings
+
+def update_vectors_csv(youtube_id, embeddings):
+    # check if the youtube_id is already in the csv file
+    # create csv file if not exists
+    VECTORS_CSV_FILE = config['VECTORS_CSV_FILE']
+    if not os.path.exists(VECTORS_CSV_FILE):
+        with open(VECTORS_CSV_FILE, 'w') as f:
+            f.write("youtube_id,embeddings\n")
+    # read the csv file
+    vectors_csv = {}
+    with open(VECTORS_CSV_FILE, 'r') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            vectors_csv[row['youtube_id']] = row['embeddings']
+    if youtube_id in vectors_csv:
+        logger.debug(f"Youtube ID {youtube_id} already in vectors.csv, updating...")
+        vectors_csv[youtube_id] = embeddings
+    else:
+        logger.debug(f"Youtube ID {youtube_id} not in vectors.csv, adding...")
+
 def read_compared_videos():
     compared_videos = []
     try:
@@ -425,51 +422,53 @@ def get_result_from_csv(url1: str, url2: str):
             }
     return None
 
-def cover_detection(youtube_url1: str, youtube_url2: str):
-    logger.debug(f"Received request for URLs: {youtube_url1} and {youtube_url2}")
-    
-    if not youtube_url1 or not youtube_url2:
-        raise HTTPException(status_code=400, detail="Both youtube_url1 and youtube_url2 parameters are required")
-
+def cover_detection(youtube_url1, youtube_url2):
+    """Detect if two YouTube videos are covers of each other."""
     try:
-        # First check if we already have the result
-        existing_result = get_result_from_csv(youtube_url1, youtube_url2)
-        if existing_result is not None:
-            logger.debug("Found existing result in CSV, returning cached result")
-            return existing_result
+        # Get video IDs
+        video_id1 = extract_video_id(youtube_url1)
+        video_id2 = extract_video_id(youtube_url2)
 
-        # If not found in CSV, perform the full analysis
-        logger.debug("No existing result found, performing full analysis")
-        wav_path1 = f"/tmp/youtube_cover_detector_api_wav/{extract_video_id(youtube_url1)}.wav"
-        wav_path2 = f"/tmp/youtube_cover_detector_api_wav/{extract_video_id(youtube_url2)}.wav"
-        
-        # Generate embeddings and calculate distance
-        logger.debug("Generating embeddings and calculating distance...")
+        # Generate audio files if needed
+        _generate_audio_from_youtube_id(video_id1)
+        _generate_audio_from_youtube_id(video_id2)
+
+        # Get WAV file paths
+        wav_path1 = os.path.join(config['WAV_FOLDER'], f"{video_id1}.wav")
+        wav_path2 = os.path.join(config['WAV_FOLDER'], f"{video_id2}.wav")
+
+        # Generate embeddings
         embeddings = _generate_embeddings_from_filepaths(wav_path1, wav_path2)
+        # Get embeddings from dictionary using keys
         keys = list(embeddings.keys())
-        embeddings1 = embeddings[keys[0]]
-        embeddings2 = embeddings[keys[1]]
-        distance = _cosine_distance(embeddings1, embeddings2)
-        logger.debug(f"Distance: {distance}")
-        distance = float(distance)
-        distance = round(distance, 2)
-        logger.debug(f"Rounded distance: {distance}")
+        embedding1 = embeddings[keys[0]]
+        embedding2 = embeddings[keys[1]]
         
-        # Determine if it's a cover
-        is_cover = distance < THRESHOLD
-        result = "Cover" if is_cover else "Not Cover"
+        # Save embeddings to vectors.csv
+        try:
+            with open(config['VECTORS_CSV_FILE'], 'a', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow([youtube_url1, embedding1.tolist()])
+                writer.writerow([youtube_url2, embedding2.tolist()])
+        except Exception as e:
+            logger.error(f"Error saving to vectors.csv: {e}")
+            # Continue even if saving fails
         
-        # Write to CSV
-        logger.debug(f"Writing result to CSV: Distance={distance}, Result={result}")
-        write_compared_video(youtube_url1, youtube_url2, result, distance)
-        
+        # Calculate distance
+        distance = _cosine_distance(embedding1, embedding2)
+
+        # Determine if it's a cover based on threshold
+        threshold = float(config.get('THRESHOLD', 0.3))
+        is_cover = distance < threshold
+
         return {
-            "distance": distance,
+            "distance": str(distance),  # Convert to string to avoid JSON serialization issues
             "is_cover": is_cover
         }
+
     except Exception as e:
-        logger.error(f"Error in cover detection: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error in cover detection: {e}")
+        raise
 
 def extract_video_id(url):
     """Extract video ID from YouTube URL"""

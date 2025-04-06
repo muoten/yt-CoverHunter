@@ -3,3 +3,6 @@ MODEL_FOLDER: /code/pretrain_model  # Point to original checkpoint
 COVERHUNTER_FOLDER: /code/
 THRESHOLD: 0.3  # Remove the environment variable syntax here
 YT_DLP_USE_COOKIES: False
+SCORES_CSV_FILE: /data/compared_videos.csv
+VECTORS_CSV_FILE: /data/vectors.csv
+PROCESS_ONLY_FIRST_N_SECONDS: -1

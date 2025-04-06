@@ -752,37 +752,50 @@
             progressStatus.textContent = statusText;
         }
 
+        async function checkExistingResult(url1, url2) {
+            try {
+                const comparedVideos = await fetch('/api/compared-videos').then(r => r.json());
+                return comparedVideos.find(v => 
+                    (v.url1 === url1 && v.url2 === url2) || 
+                    (v.url1 === url2 && v.url2 === url1)
+                );
+            } catch (error) {
+                console.error('Error checking existing result:', error);
+                return null;
+            }
+        }
+
         async function detectCover() {
-            const url1 = document.getElementById('video1').value;
-            const url2 = document.getElementById('video2').value;
+            const video1Input = document.getElementById('video1');
+            const video2Input = document.getElementById('video2');
             const resultDiv = document.getElementById('result');
-            const progressContainer = document.getElementById('progress-container');
             const detectionResultDiv = document.getElementById('detection-result');
-            const previewDiv = document.getElementById('preview');
-            
-            if (!url1 || !url2) {
-                alert('Please enter both YouTube URLs');
+
+            // Check if URLs are valid
+            if (!video1Input.value || !video2Input.value) {
+                alert('Please enter both video URLs');
                 return;
             }
+
+            // Check if result exists in CSV
+            const existingResult = await checkExistingResult(video1Input.value, video2Input.value);
+
+            if (existingResult && existingResult.score && existingResult.score !== 'nan') {
+                // Show results immediately from CSV
+                resultDiv.style.display = 'block';
+                displayResult(existingResult.result, existingResult.score, existingResult.feedback);
+                return;
+            }
+
+            // Show loading state
+            resultDiv.style.display = 'block';
+            detectionResultDiv.innerHTML = '<div class="loading">Processing videos...</div>';
 
             let progressInterval;
             
             try {
-                // Check if videos were already analyzed first
-                const comparedVideos = await fetch('/api/compared-videos').then(r => r.json());
-                const existingResult = comparedVideos.find(v => 
-                    (v.url1 === url1 && v.url2 === url2) || 
-                    (v.url1 === url2 && v.url2 === url1)
-                );
-
-                if (existingResult) {
-                    // Show results immediately from CSV
-                    resultDiv.style.display = 'block';
-                    displayResult(existingResult.result, existingResult.score, existingResult.feedback);
-                    return;
-                }
-
                 // If not found in CSV, continue with full analysis
+                const progressContainer = document.getElementById('progress-container');
                 progressContainer.style.display = 'block';
                 detectionResultDiv.innerHTML = '';  // Only clear the result text, not the thumbnails
                 
@@ -819,8 +832,8 @@
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        video_url1: url1,
-                        video_url2: url2
+                        video_url1: video1Input.value,
+                        video_url2: video2Input.value
                     })
                 });
                 

@@ -175,6 +175,28 @@ print("Starting application...")
 # Create the FastAPI app
 app = FastAPI()
 
+# Initialize CSV files if they don't exist
+def init_csv_files():
+    logger.info("Initializing CSV files...")
+    csv_files = {
+        config['SCORES_CSV_FILE']: ['url1', 'url2', 'result', 'score', 'feedback'],
+        config['VECTORS_CSV_FILE']: ['url', 'vector']
+    }
+    
+    for filepath, headers in csv_files.items():
+        try:
+            if not os.path.exists(filepath):
+                logger.info(f"Creating CSV file: {filepath}")
+                os.makedirs(os.path.dirname(filepath), exist_ok=True)
+                with open(filepath, 'w', newline='') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(headers)
+        except Exception as e:
+            logger.error(f"Error creating CSV file {filepath}: {e}")
+            raise
+
+init_csv_files()
+
 # Store results in memory
 detection_results: Dict[str, Dict] = {}
 
@@ -452,7 +474,13 @@ async def cover_detection_endpoint(request: Request):
         
         # Call cover_detection and get the actual values
         result = cover_detection(youtube_url1, youtube_url2)
-        distance = float(result["distance"])  # Convert to float
+        # Handle empty or invalid distance values
+        try:
+            distance = float(result["distance"]) if result["distance"] else 0.0
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid distance value: {result['distance']}, defaulting to 0.0")
+            distance = 0.0
+
         is_cover = result["is_cover"]
         result_text = "Cover" if is_cover else "Not Cover"
         
