@@ -127,7 +127,7 @@
         }
 
         /* Common styles for the Check if Cover button */
-        .main-content > button {
+        .input-section > button {
             width: 200px;
             margin: 20px auto;
             display: block;
@@ -140,9 +140,16 @@
             padding: 12px 24px;
         }
 
-        .main-content > button:hover {
+        .input-section > button:hover {
             transform: translateY(-1px);
             box-shadow: 0 4px 8px rgba(33, 150, 243, 0.3);
+        }
+
+        .input-section > button:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
         }
 
         button:active {
@@ -958,6 +965,12 @@
                 const progressContainer = document.getElementById('progress-container');
                 progressContainer.style.display = 'none';
                 resultDiv.style.display = 'block';
+                // Reset button state
+                const compareButton = document.querySelector('.input-section button');
+                compareButton.disabled = false;
+                compareButton.style.opacity = '1';
+                compareButton.style.cursor = 'pointer';
+
                 if (error.name === 'AbortError') {
                     detectionResultDiv.innerHTML = `
                         <p class="error">Request cancelled: Processing was taking longer than ${MAX_TOTAL_TIME} seconds.
