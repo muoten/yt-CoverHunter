@@ -1,6 +1,12 @@
+"""Background worker for processing tasks"""
+
 import time
 import asyncio
+import logging
+from typing import Dict, Any
 from app.youtube_cover_detector import CoverDetector, logger
+
+logger = logging.getLogger(__name__)
 
 def process_queue_forever(queue, active_tasks):
     """Process queue items forever in a separate process"""
