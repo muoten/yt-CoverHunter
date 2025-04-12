@@ -716,6 +716,13 @@
                 position: static;
             }
         }
+
+        .queue-status {
+            background: #f0f4f8;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
     </style>
 </head>
 <body>
@@ -733,12 +740,12 @@
                     <input type="text" id="video2" placeholder="Enter YouTube URL">
                     <div class="paste-icon" onclick="pasteUrl('video2')" title="Paste from clipboard"></div>
                 </div>
-                <button onclick="detectCover()">Compare Videos</button>
+                <button id="submit-button" onclick="checkIfCover()">Check if Cover</button>
                 
                 <!-- Progress and Results Section -->
                 <div id="progress-container" class="progress-container" style="display: none;">
                     <div id="progress-bar" class="progress-bar"></div>
-                    <div id="progress-status" class="progress-status"></div>
+                    <div id="progress-text" class="progress-status"></div>
                 </div>
                 
                 <div id="result" class="result" style="display: none;">
@@ -748,6 +755,9 @@
             </div>
             <div class="history-section">
                 <h2>Last analyzed videos</h2>
+                <div id="queue-status" class="queue-status">
+                    <p>Queue: <span id="queue-count">0</span> pending</p>
+                </div>
                 <div id="compared-videos-list"></div>
             </div>
         </div>
@@ -757,20 +767,75 @@
         const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         const API_URL = isLocalhost
             ? `http://${window.location.host}/api`  // Local development
-            : 'https://yt-coverhunter.fly.dev/api';  // Fly.dev URL
+            : 'https://yt-coverhunter.fly.dev/api';  // Production URL
 
         console.log('Using API URL:', API_URL);
 
-        function updateProgress(percent, status, timeRemaining = null) {
-            const progressBar = document.getElementById('progress-bar');
-            const progressStatus = document.getElementById('progress-status');
-            progressBar.style.width = `${percent}%`;
-            
-            let statusText = status;
-            if (timeRemaining !== null) {
-                statusText += ` (estimated ${timeRemaining} seconds remaining)`;
+        function formatBytes(bytes) {
+            const units = ['B', 'KB', 'MB', 'GB'];
+            let unit = 0;
+            let size = bytes;
+            while (size >= 1024 && unit < units.length - 1) {
+                size /= 1024;
+                unit++;
             }
-            progressStatus.textContent = statusText;
+            return `${size.toFixed(1)} ${units[unit]}`;
+        }
+
+        function formatTime(seconds) {
+            if (seconds < 60) return `${Math.round(seconds)}s`;
+            const minutes = Math.floor(seconds / 60);
+            seconds = Math.round(seconds % 60);
+            return `${minutes}m ${seconds}s`;
+        }
+
+        function updateProgress(percent, message) {
+            const progressBar = document.getElementById('progress-bar');
+            const progressText = document.getElementById('progress-text');
+            progressBar.style.width = `${percent}%`;
+            progressBar.setAttribute('aria-valuenow', percent);
+            
+            // Show more detailed status messages
+            const statusMessages = {
+                'downloading_videos': 'Downloading videos...',
+                'processing_audio': 'Processing audio...',
+                'calculating_similarity': 'Calculating similarity...',
+                'completed': 'Complete!',
+                'failed': 'Error: '
+            };
+            
+            let displayMessage;
+            if (typeof message === 'object') {
+                // Handle status object
+                const status = message.status || 'processing';
+                displayMessage = statusMessages[status] || status;
+                
+                // Add estimated time remaining if available
+                if (message.estimated_remaining) {
+                    const remainingMinutes = Math.floor(message.estimated_remaining / 60);
+                    const remainingSeconds = Math.round(message.estimated_remaining % 60);
+                    const timeStr = remainingMinutes > 0 ? 
+                        `${remainingMinutes}m ${remainingSeconds}s` : 
+                        `${remainingSeconds}s`;
+                    
+                    // Add "taking longer" message if extended
+                    if (message.extended) {
+                        displayMessage += ` (Oops, it's taking a bit more than expected. ${timeStr} remaining)`;
+                    } else {
+                        displayMessage += ` (Est. ${timeStr} remaining)`;
+                    }
+                }
+                
+                // Show timeout error
+                if (status === 'failed' && message.error === 'Request timed out') {
+                    displayMessage = 'Request timed out. Please try again.';
+                }
+            } else {
+                // Handle string message
+                displayMessage = statusMessages[message] || message;
+            }
+
+            progressText.textContent = displayMessage;
         }
 
         async function checkExistingResult(url1, url2) {
@@ -786,281 +851,114 @@
             }
         }
 
-        async function detectCover() {
-            const video1Input = document.getElementById('video1');
-            const video2Input = document.getElementById('video2');
-            const resultDiv = document.getElementById('result');
-            const detectionResultDiv = document.getElementById('detection-result');
-            const progressContainer = document.getElementById('progress-container');
-            const compareButton = document.querySelector('.input-section button');
-            
-            console.log("Starting detection with URLs:", video1Input.value, video2Input.value);
-            
-            if (!video1Input.value || !video2Input.value) {
-                detectionResultDiv.innerHTML = '<p class="error">Please enter both video URLs</p>';
+        async function checkIfCover() {
+            const submitButton = document.getElementById('submit-button');
+            if (!submitButton) {
+                console.error('Submit button not found');
                 return;
             }
-
-            // Check if videos were already compared
+            
+            const video1 = document.getElementById('video1').value;
+            const video2 = document.getElementById('video2').value;
+            
             try {
-                const response = await fetch('/api/compared-videos');
-                const comparedVideos = await response.json();
-                const alreadyCompared = comparedVideos.some(video => 
-                    (video.url1 === video1Input.value && video.url2 === video2Input.value) ||
-                    (video.url1 === video2Input.value && video.url2 === video1Input.value)
-                );
+                submitButton.disabled = true;
+                console.log('Making request to:', `${API_URL}/check-if-cover`);
                 
-                if (alreadyCompared) {
-                    // If already compared, don't disable the button and show cached result
-                    const video = comparedVideos.find(v => 
-                        (v.url1 === video1Input.value && v.url2 === video2Input.value) ||
-                        (v.url1 === video2Input.value && v.url2 === video1Input.value)
-                    );
-                    displayResult(video.result, video.score, video.feedback);
-                    return;
-                }
-            } catch (error) {
-                console.error('Error checking compared videos:', error);
-            }
-
-            // Disable the compare button
-            compareButton.disabled = true;
-            compareButton.style.opacity = '0.7';
-            compareButton.style.cursor = 'not-allowed';
-
-            // Get average processing time from recent comparisons
-            let initialExpectedTime = 50;  // Default
-            try {
-                const response = await fetch('/api/avg-processing-time');
+                const response = await fetch(`${API_URL}/check-if-cover`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        video_url1: video1,
+                        video_url2: video2
+                    })
+                });
+                
                 const data = await response.json();
-                initialExpectedTime = data.avg_time;
-            } catch (e) {
-                console.error('Error getting average time:', e);
-            }
-            
-            const MAX_TOTAL_TIME = Math.ceil(initialExpectedTime * 1.1);
-            let totalExpectedTime = initialExpectedTime; // current expected time
-            let isInExtension = false; // Track if we're in extension mode
-            
-            // Create AbortController for the fetch request
-            let controller = new AbortController();
-            let abortTimeout;
-            let isAborting = false; // Flag to coordinate abort actions
-
-            // Reset abort controller
-            controller = new AbortController();
-            const { signal } = controller;
-            isAborting = false;
-
-            // Check if result exists in CSV
-            const existingResult = await checkExistingResult(video1Input.value, video2Input.value);
-
-            if (existingResult && existingResult.score && existingResult.score !== 'nan') {
-                // Show results immediately from CSV
-                resultDiv.style.display = 'block';
-                displayResult(existingResult.result, existingResult.score, existingResult.feedback);
-                return;
-            }
-
-            // Show loading state
-            resultDiv.style.display = 'block';
-            detectionResultDiv.innerHTML = '<div class="loading">Processing videos...</div>';
-
-            let progressInterval;
-            let timeoutExtension;
-            let extensionCount = 0;
-            
-            try {
-                const progressContainer = document.getElementById('progress-container');
-                progressContainer.style.display = 'block';
-                detectionResultDiv.innerHTML = '';
+                console.log('Received response:', data);
                 
-                // Set up abort timeout
-                abortTimeout = setTimeout(async () => {
-                    if (!isAborting) {
-                        isAborting = true;
-                        controller.abort();
-                        // Send cleanup request to server
-                        try {
-                            await fetch(`${API_URL}/cleanup`, {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                },
-                                body: JSON.stringify({
-                                    video_url1: video1Input.value,
-                                    video_url2: video2Input.value
-                                })
-                            });
-                        } catch (error) {
-                            console.error('Cleanup request failed:', error);
-                        }
-                        progressContainer.style.display = 'none';
-                        resultDiv.style.display = 'block';
-                        detectionResultDiv.innerHTML = `
-                            <p class="error">Request cancelled: Processing was taking longer than ${MAX_TOTAL_TIME} seconds.
-                            The server might be experiencing high load. Please try again later.</p>`;
-                    }
-                }, MAX_TOTAL_TIME * 1000);
-
-                let startTime = Date.now();
-                const updateInterval = 1000; // Update every second
-                const startTimeGlobal = Date.now(); // Keep track of total time
+                // Show progress container for all states
+                document.getElementById('progress-container').style.display = 'block';
                 
-                // Create a flag to track if request was aborted
-                let wasAborted = false;
-                
-                progressInterval = setInterval(() => {
-                    let elapsed = (Date.now() - startTime) / 1000;
-                    let totalElapsed = (Date.now() - startTimeGlobal) / 1000;
-                    let timeRemaining = Math.max(0, Math.ceil(totalExpectedTime - elapsed));
-                    
-                    // Check if we've exceeded maximum time
-                    if (totalElapsed > MAX_TOTAL_TIME) {
-                        if (!isAborting) {
-                            isAborting = true;
-                            clearInterval(progressInterval);
-                            controller.abort();
-                        }
-                        return;
-                    }
-                    
-                    // Calculate progress percentage based on elapsed time
-                    let percent = Math.min(99, (elapsed / totalExpectedTime) * 100);
-                    
-                    // Update status message based on progress
-                    let status;
-                    if (timeRemaining === 0) {  // Need to extend time
-                        if (timeRemaining === 0) {  // Reset the timer
-                            // Calculate proper starting progress: 50/(50+20) ≈ 0.71
-                            const initialProgress = initialExpectedTime / (initialExpectedTime + 20);  // About 71%
-                            startTime = Date.now();
-                            totalExpectedTime = 20;
-                            startTime = Date.now() - ((totalExpectedTime * initialProgress) * 1000);
-                            elapsed = (Date.now() - startTime) / 1000;
-                            timeRemaining = Math.max(0, Math.ceil(totalExpectedTime - elapsed));
-                            isInExtension = true;
-                        }
-                        status = "Oops, still working on it...";
-                        // Calculate new percentage based on remaining portion
-                        const extendedPercent = 71 + ((elapsed / totalExpectedTime) * 28); // Progress from 71% to 99%
-                        updateProgress(Math.min(99, extendedPercent), status, timeRemaining);
-                        return;
-                    } else if (isInExtension) {
-                        status = "Oops, still working on it...";
-                        const extendedPercent = 71 + ((elapsed / totalExpectedTime) * 28);
-                        updateProgress(Math.min(99, extendedPercent), status, timeRemaining);
-                        return;
-                    } else if (elapsed <= 8) {
-                        status = 'Initializing...';
-                    } else if (elapsed <= 20) {
-                        status = 'Downloading files...';
-                    } else if (elapsed <= 35) {
-                        status = 'Extracting audio features...';
-                    } else {
-                        status = 'Generating embeddings...';
-                    }
-                    
-                    updateProgress(percent, status, timeRemaining > 0 ? timeRemaining : null);
-                    
-                }, updateInterval);
-
-                let startResponse;
-                try {
-                    startResponse = await fetch(`${API_URL}/check-if-cover`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            video_url1: video1Input.value,
-                            video_url2: video2Input.value
-                        }),
-                        signal
-                    });
-
-                    if (!isAborting) {
-                        clearTimeout(abortTimeout);
-                    }
-                } catch (error) {
-                    if (isAborting) {
-                        throw new Error('Request cancelled due to timeout. Server might be experiencing high load. Please refresh the page and try again later.');
-                    }
-                    throw error;
+                // Handle busy status first
+                if (data.status === 'busy') {
+                    updateProgress(0, data);  // Show busy message in progress bar
+                    setTimeout(() => {
+                        document.getElementById('progress-container').style.display = 'none';
+                        submitButton.disabled = false;
+                    }, 3000);
+                    return;  // Exit early
                 }
                 
-                if (!startResponse.ok) {
-                    const errorText = await startResponse.text();
-                    console.error("Server error response:", errorText);
-                    throw new Error('Failed to start detection process');
+                // Then check for other errors
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
                 }
-
-                const data = await startResponse.json();
                 
-                fetchComparedVideos();
-
-                clearInterval(progressInterval);
-                if (timeoutExtension) {
-                    clearTimeout(timeoutExtension);
+                // Show result container for non-busy states
+                document.getElementById('result').style.display = 'block';
+                
+                // Handle immediate result
+                if (data.status === 'completed') {
+                    displayResult(data.result.result, data.result.score);
+                    updateProgress(100, 'completed');  // Show completed immediately
+                    await fetchComparedVideos();
+                } else {
+                    // Poll for results if not immediate
+                    try {
+                        const result = await pollForResults(data.request_id);
+                        displayResult(result.result, result.score);
+                        await fetchComparedVideos();
+                    } catch (error) {
+                        console.error('Error polling results:', error);
+                        updateProgress(0, `Error: ${error.message}`);
+                    }
                 }
-                updateProgress(100, 'Complete!');
-                
-                setTimeout(() => {
-                    progressContainer.style.display = 'none';
-                    resultDiv.style.display = 'block';
-                    // Get the latest feedback state for this comparison
-                    fetch('/api/compared-videos')
-                        .then(r => r.json())
-                        .then(videos => {
-                            const latestResult = videos.find(v => 
-                                (v.url1 === video1Input.value && v.url2 === video2Input.value) ||
-                                (v.url1 === video2Input.value && v.url2 === video1Input.value)
-                            );
-                            displayResult(data.result, data.score, latestResult?.feedback);
-                        })
-                        .catch(err => {
-                            console.error('Error getting feedback state:', err);
-                            displayResult(data.result, data.score);
-                        });
-                    
-                    // Re-enable the compare button after successful completion
-                    compareButton.disabled = false;
-                    compareButton.style.opacity = '1';
-                    compareButton.style.cursor = 'pointer';
-                }, 1000);
                 
             } catch (error) {
-                // Clear the abort timeout if it exists
-                if (abortTimeout) {
-                    clearTimeout(abortTimeout);
-                }
-                console.error("Full error details:", error);
-                clearInterval(progressInterval);
-                if (timeoutExtension) {
-                    clearTimeout(timeoutExtension);
-                }
-                const progressContainer = document.getElementById('progress-container');
-                progressContainer.style.display = 'none';
-                resultDiv.style.display = 'block';
-                // Re-enable the compare button on error
-                compareButton.disabled = false;
-                compareButton.style.opacity = '1';
-                compareButton.style.cursor = 'pointer';
-
-                if (error.name === 'AbortError') {
-                    detectionResultDiv.innerHTML = `
-                        <p class="error">Request cancelled: Processing was taking longer than ${MAX_TOTAL_TIME} seconds.
-                        The server might be experiencing high load. Please try again later.</p>`;
-                } else {
-                    console.error('Error details:', error);
-                    detectionResultDiv.innerHTML = `<p class="error">Error: ${error.message}</p>`;
-                }
+                console.error('Error:', error);
+                updateProgress(0, `Error: ${error.message}`);
             } finally {
-                // Always make sure the button is re-enabled
-                compareButton.disabled = false;
-                compareButton.style.opacity = '1';
-                compareButton.style.cursor = 'pointer';
+                submitButton.disabled = false;
             }
+        }
+
+        async function pollForResults(requestId, maxAttempts = 60) {
+            let attempts = 0;
+            
+            while (attempts < maxAttempts) {
+                try {
+                    const response = await fetch(`${API_URL}/comparison-status/${requestId}`);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    const data = await response.json();
+                    
+                    if (data.status === 'completed') {
+                        // Update progress to 100% and show completed
+                        updateProgress(100, 'completed');
+                        return data.result;
+                    }
+                    
+                    if (data.status === 'failed') {
+                        throw new Error(data.error);
+                    }
+                    
+                    // Update progress with download progress if available
+                    updateProgress(data.progress || 0, data);
+                    
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    attempts++;
+                } catch (error) {
+                    console.error('Error polling results:', error);
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    attempts++;
+                }
+            }
+            
+            throw new Error('Timeout waiting for results');
         }
 
         async function fetchComparedVideos() {
@@ -1227,6 +1125,12 @@
             const previewDiv = document.getElementById('preview');
             const resultDiv = document.getElementById('result');
             const detectionResultDiv = document.getElementById('detection-result');
+            
+            // Initialize queue status immediately
+            await updateQueueStatus();
+            
+            // Fetch and display compared videos
+            await fetchComparedVideos();
 
             // Load latest example from CSV
             try {
@@ -1266,9 +1170,6 @@
                 loadThumbnail(video2Input.value, 2);
                 detectionResultDiv.innerHTML = '';  // Clear the result
             }, 500));
-
-            // Fetch initial compared videos
-            fetchComparedVideos();
         });
 
         // Add this function to check if player is ready
@@ -1481,6 +1382,20 @@
                 detectionResultDiv.classList.remove('feedback-not-ok');
             }
         }
+
+        // Add queue status polling
+        async function updateQueueStatus() {
+            try {
+                const response = await fetch(`${API_URL}/queue-status`);
+                const data = await response.json();
+                document.getElementById('queue-count').textContent = data.pending_tasks;
+            } catch (error) {
+                console.error('Error updating queue:', error);
+            }
+        }
+        
+        // Poll queue status every 5 seconds
+        setInterval(updateQueueStatus, 5000);
     </script>
 </body>
 </html> 

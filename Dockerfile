@@ -60,11 +60,12 @@ COPY templates/ /code/templates/
 COPY data/ /code/data/
 COPY pretrain_model/ /code/pretrain_model/
 
-
+# Download model file if needed
+RUN curl -L https://your-model-url/checkpoint.pt -o /code/pretrain_model/checkpoints/checkpoint.pt || echo "Warning: Model file not downloaded"
 
 # Create volume for persistent data
 VOLUME /data
 
 # Run the application
-CMD ["sh", "-c", "echo 'Starting container...' && PYTHONUNBUFFERED=1 uvicorn youtube_cover_detector_api:app --host $HOST --port $PORT --workers 1 --log-level debug --reload --access-log --use-colors"]
+CMD ["sh", "-c", "echo 'Starting container...' && PYTHONUNBUFFERED=1 uvicorn youtube_cover_detector_api:app --host $HOST --port $PORT --workers 4 --log-level debug --reload --access-log --use-colors"]
 #CMD ["python", "youtube_cover_detector_api.py"]

@@ -3,7 +3,7 @@ import logging
 import sys
 from fastapi import FastAPI, HTTPException, BackgroundTasks, APIRouter, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.openapi.docs import get_swagger_ui_html
 from pydantic import BaseModel, validator
@@ -30,12 +30,23 @@ from app.youtube_cover_detector import (
     _cosine_distance, 
     _generate_embeddings_from_filepaths,
     _generate_dataset_txt_from_files,
-    get_average_processing_time
+    get_average_processing_time,
+    comparison_queue,
+    get_result_from_csv,
+    process_queue,
+    read_compared_videos,
+    logger
 )
 from app.parse_config import config
 from contextlib import suppress
-from app.youtube_cover_detector import CoverDetector, cleanup_temp_files, logger
+from app.youtube_cover_detector import (
+    CoverDetector, 
+    cleanup_temp_files, 
+    logger
+)
 import math
+from multiprocessing import Process, Queue, Manager
+from app.background_worker import start_background_worker
 
 #First version that works! Though it takes more than 3 minutes to run in fly.dev free tier
 YT_DLP_USE_COOKIES = os.getenv('YT_DLP_USE_COOKIES', False)
@@ -172,6 +183,53 @@ print("Starting application...")
 # Create the FastAPI app
 app = FastAPI()
 
+# Mount static files first - these should always be accessible
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Basic routes that should always work
+@app.get("/", response_class=HTMLResponse)
+async def root():
+    """Serve the main page - this should always work"""
+    with open('templates/index.html') as f:
+        return f.read()
+
+@app.get("/api/compared-videos")
+async def get_compared_videos():
+    """Get history - this should always work"""
+    videos = read_compared_videos()
+    return videos
+
+@app.get("/api/queue-status")
+async def get_queue_status():
+    """Get current queue status - this should always work"""
+    # Count both queued tasks and tasks that are currently processing
+    processing_tasks = len([t for t in shared_active_tasks.values() 
+                          if t.get('status') in ['pending', 'downloading', 'downloading_first', 
+                                                'downloading_second', 'processing']])
+    queued_tasks = comparison_queue.qsize()
+    
+    return {
+        "pending_tasks": queued_tasks + processing_tasks,
+        "queued": queued_tasks,
+        "processing": processing_tasks
+    }
+
+# Create shared queues and dictionaries
+manager = Manager()
+shared_active_tasks = manager.dict()
+comparison_queue = Queue()
+
+# Start background worker process
+worker_process = Process(target=start_background_worker, args=(comparison_queue, shared_active_tasks))
+worker_process.daemon = True
+
+@app.on_event("startup")
+async def startup_event():
+    """Start the queue processor on app startup"""
+    if not worker_process.is_alive():
+        worker_process.start()
+    logger.info("Queue processor started")
+
 # Initialize CSV files if they don't exist
 def init_csv_files():
     logger.info("Initializing CSV files...")
@@ -237,9 +295,6 @@ class VideoRequest(BaseModel):
 # Add API router
 api_router = APIRouter()  # Remove prefix to match existing frontend paths
 
-# Store active tasks
-active_tasks: Dict[str, asyncio.Task] = {}
-
 # Add API endpoints
 @api_router.post("/api/detect-cover")
 async def detect_cover(request: VideoRequest, background_tasks: BackgroundTasks):
@@ -255,15 +310,15 @@ async def detect_cover(request: VideoRequest, background_tasks: BackgroundTasks)
     
     # Cancel any existing task for these videos
     video_key = f"{request.video_url1}_{request.video_url2}"
-    if video_key in active_tasks:
-        active_tasks[video_key].cancel()
+    if video_key in shared_active_tasks:
+        shared_active_tasks[video_key].cancel()
         with suppress(asyncio.CancelledError):
-            await active_tasks[video_key]
-        del active_tasks[video_key]
+            await shared_active_tasks[video_key]
+        del shared_active_tasks[video_key]
     
     # Store the task so it can be cancelled if needed
     task = asyncio.create_task(process_video(request.video_url1, request.video_url2))
-    active_tasks[video_key] = task
+    shared_active_tasks[video_key] = task
     
     return {"task_id": task_id, "status": "processing"}
 
@@ -333,7 +388,7 @@ async def process_video(video_url1: str, video_url2: str):
         cleanup_old_files(WAV_DIR)
         
         detector = YoutubeCoverDetector()
-        result = await detector.detect_cover(video_url1, video_url2)
+        result = await detector.detect_cover(video_url1, video_2)
         
         detection_results[video_url1 + "_" + video_url2] = {
             "status": "completed",
@@ -360,14 +415,6 @@ def cleanup_old_files(directory: Path, max_age_hours: int = 1):
             except Exception as e:
                 print(f"Failed to delete {file_path}: {e}")
 
-# Mount the static files directory
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# Serve index.html at root
-@app.get("/")
-async def read_root():
-    return FileResponse(str(TEMPLATES_DIR / "index.html"))
-
 # Include API router
 app.include_router(api_router)
 
@@ -387,151 +434,103 @@ async def health_check():
         ]
     }
 
-@app.get("/")
-async def root():
-    return {"status": "ok", "message": "YouTube Cover Detector API is running"}
-
-@app.get("/healthz")
-async def healthcheck():
-    return {"status": "healthy"}
-
-# Update the CSV_FILE path
-CSV_FILE = os.getenv('CSV_FILE', '/data/compared_videos.csv')
-
-def read_compared_videos():
-    compared_videos = []
-    try:
-        with open(CSV_FILE, mode='r', newline='') as file:
-            reader = csv.DictReader(file)
-            for row in reader:
-                compared_videos.append(row)
-    except FileNotFoundError:
-        logger.debug("CSV file not found. Creating a new file with headers.")
-        with open(CSV_FILE, mode='w', newline='') as file:
-            writer = csv.DictWriter(file, fieldnames=['url1', 'url2', 'result', 'score', 'feedback'])
-            writer.writeheader()
-    return compared_videos
-
-def write_compared_video(url1, url2, result, score):
-    logger.debug(f"Starting write_compared_video with params: {url1}, {url2}, {result}, {score}")
-    try:
-        with open(CSV_FILE, mode='a', newline='') as file:
-            writer = csv.DictWriter(file, fieldnames=['url1', 'url2', 'result', 'score', 'feedback'])
-            if file.tell() == 0:
-                writer.writeheader()
-                logger.debug("Writing header to CSV file")
-            row_data = {
-                'url1': url1, 
-                'url2': url2, 
-                'result': result, 
-                'score': score,
-                'feedback': ''
-            }
-            writer.writerow(row_data)
-            logger.debug(f"Successfully wrote row to CSV: {row_data}")
-    except Exception as e:
-        logger.error(f"Error writing to CSV: {e}")
-        raise
-
-def log_csv_contents():
-    logger.debug("##### Current contents of the CSV file #####")
-    compared_videos = read_compared_videos()
-    for video in compared_videos:
-        logger.debug(video)
-    logger.debug("############################################")
-
-@app.get('/api/compared-videos')
-async def get_compared_videos(request: Request):
-    compared_videos = read_compared_videos()
-    return JSONResponse(content=compared_videos)
-
-""" @app.post('/api/detect-cover-dummy')
-async def detect_cover_route(request: Request):
-    data = await request.json()
-    url1 = data.get('video_url1')
-    url2 = data.get('video_url2')
-    
-    # Simulate a cover detection result and score
-    result = 'Cover' if url1 and url2 else 'Not a Cover'
-    score = 0.85 if result == 'Cover' else 0.15  # Example score
-    
-    write_compared_video(url1, url2, result, score)
-    return JSONResponse(content={'result': result, 'score': score}) """
-
 @app.post("/api/check-if-cover")
 async def check_if_cover(request: VideoRequest, background_tasks: BackgroundTasks):
-    video_key = f"{request.video_url1}_{request.video_url2}"
-    
-    # Use dynamic timeout based on recent performance
-    timeout = math.ceil(get_average_processing_time() * 1.1)
-    
-    logger.info(f"Starting cover detection for videos: {request.video_url1} and {request.video_url2}")
-    
-    # Cancel any existing task for these videos
-    if video_key in active_tasks:
-        active_tasks[video_key].cancel()
-        with suppress(asyncio.CancelledError):
-            await active_tasks[video_key]
-        del active_tasks[video_key]
-    
-    # Store the task so it can be cancelled if needed
-    task = asyncio.create_task(process_videos(request.video_url1, request.video_url2))
-    active_tasks[video_key] = task
-    
     try:
-        result = await asyncio.wait_for(task, timeout=timeout)
-        del active_tasks[video_key]
-        return result
-    except asyncio.TimeoutError:
-        task.cancel()
-        with suppress(asyncio.CancelledError):
-            await task
-        del active_tasks[video_key]
-        if config['CLEANUP_ON_TIMEOUT']:
-            cleanup_temp_files(request.video_url1, request.video_url2)
-        raise HTTPException(status_code=408, detail="Request timeout")
+        # Check if videos were already compared
+        existing_result = get_result_from_csv(request.video_url1, request.video_url2)
+        if existing_result:
+            return {
+                "status": "completed",
+                "result": {
+                    "result": "Cover" if existing_result["is_cover"] else "Not Cover",
+                    "score": existing_result["distance"]
+                }
+            }
+        
+        # Check if system is busy
+        processing_tasks = len([t for t in shared_active_tasks.values() 
+                              if t.get('status') in ['pending', 'downloading', 'downloading_first', 
+                                                    'downloading_second', 'processing']])
+        queued_tasks = comparison_queue.qsize()
+        total_pending = queued_tasks + processing_tasks
+        
+        if total_pending > 0:  # Block if anything is being processed or queued
+            return {
+                "status": "busy",
+                "message": "System is busy. Please try again in a few minutes."
+            }
+        
+        # Add new request to queue
+        request_id = f"{hash((request.video_url1, request.video_url2))}"
+        task = {
+            'id': request_id,
+            'url1': request.video_url1,
+            'url2': request.video_url2,
+            'status': 'pending',
+            'start_time': time.time()
+        }
+        
+        logger.info(f"Adding request {request_id} to queue")
+        comparison_queue.put(task)
+        shared_active_tasks[request_id] = task
+        logger.info(f"Request {request_id} added to queue. New queue size: {comparison_queue.qsize()}")
+        
+        return {
+            "request_id": request_id,
+            "status": "queued",
+            "message": f"Request added to queue. Position: {comparison_queue.qsize()}"
+        }
+        
     except Exception as e:
         logger.error(f"Error in check_if_cover: {str(e)}")
-        logger.exception(e)  # This will log the full traceback
-        if video_key in active_tasks:
-            active_tasks[video_key].cancel()
-            del active_tasks[video_key]
-        raise HTTPException(status_code=500, detail=f"Failed to start detection process: {str(e)}")
-
-async def process_videos(url1: str, url2: str):
-    detector = CoverDetector()
-    start_time = time.time()
-    try:
-        result = await detector.compare_videos(url1, url2)
-        elapsed_time = time.time() - start_time
-        result['elapsed_time'] = round(elapsed_time, 2)  # Add elapsed time to result
-        return result
-    except Exception as e:
-        logger.error(f"Error in process_videos: {str(e)}")
-        logger.exception(e)
-        raise HTTPException(status_code=500, detail=f"Error processing videos: {str(e)}")
-
-def reset_compared_videos():
-    """Reset the CSV file by creating a new empty file with just the header"""
-    logger.debug("Resetting compared videos CSV file")
-    try:
-        with open(CSV_FILE, mode='w', newline='') as file:
-            writer = csv.DictWriter(file, fieldnames=['url1', 'url2', 'result', 'score'])
-            writer.writeheader()
-        logger.debug("CSV file has been reset successfully")
-    except Exception as e:
-        logger.error(f"Error resetting CSV file: {e}")
-        raise
-
-@app.post('/api/reset-compared-videos')
-async def reset_compared_videos_endpoint():
-    """Endpoint to reset the compared videos CSV file"""
-    try:
-        reset_compared_videos()
-        return JSONResponse(content={"status": "success", "message": "Compared videos have been reset"})
-    except Exception as e:
-        logger.error(f"Error in reset_compared_videos_endpoint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/comparison-status/{request_id}")
+async def get_comparison_status(request_id: str):
+    """Get the status of a comparison request"""
+    task = shared_active_tasks.get(request_id)
+    if task:
+        if task['status'] == 'completed':
+            # Remove completed task from active tasks
+            del shared_active_tasks[request_id]
+        else:
+            # Add estimated time remaining based on median of last 3 processes
+            avg_time = get_average_processing_time()  # This gets median of last 3 entries
+            start_time = task.get('start_time', time.time())
+            elapsed = time.time() - start_time
+            
+            # Check for timeout
+            if elapsed > config['REQUEST_TIMEOUT']:
+                task['status'] = 'failed'
+                task['error'] = 'Request timed out'
+                return task
+            
+            # Calculate remaining time
+            remaining = max(0, avg_time - elapsed)
+            
+            # If less than 1 second remaining but not done, extend to timeout
+            if remaining < 1 and task['status'] != 'completed':
+                remaining = max(0, config['REQUEST_TIMEOUT'] - elapsed)
+                task['extended'] = True
+            
+            task['estimated_remaining'] = remaining
+            
+            # Update status based on elapsed time
+            if elapsed < 10:
+                task['status'] = 'downloading_videos'
+                task['progress'] = (elapsed / 10) * 30
+            elif elapsed < 25:
+                task['status'] = 'processing_audio'
+                task['progress'] = 30 + ((elapsed - 10) / 15) * 40
+            else:
+                task['status'] = 'calculating_similarity'
+                task['progress'] = 70 + ((elapsed - 25) / (avg_time - 25)) * 25
+            
+            task['progress'] = min(95, task['progress'])
+        
+        return task
+    return {"status": "not_found"}
 
 @app.post("/api/feedback")
 async def submit_feedback(request: Request):
@@ -664,11 +663,11 @@ def _generate_audio_from_youtube_id(youtube_id):
 @app.post("/api/cleanup")
 async def cleanup_request(request: VideoRequest):
     video_key = f"{request.video_url1}_{request.video_url2}"
-    if video_key in active_tasks:
-        active_tasks[video_key].cancel()
+    if video_key in shared_active_tasks:
+        shared_active_tasks[video_key].cancel()
         with suppress(asyncio.CancelledError):
-            await active_tasks[video_key]
-        del active_tasks[video_key]
+            await shared_active_tasks[video_key]
+        del shared_active_tasks[video_key]
     return {"status": "cleaned"}
 
 @app.get("/api/avg-processing-time")
@@ -678,4 +677,4 @@ async def get_avg_time():
 
 if __name__ == '__main__':
     import uvicorn
-    uvicorn.run(app, host='0.0.0.0', port=7860, log_level="debug") 
+    uvicorn.run(app, host='0.0.0.0', port=7860, workers=4, log_level="debug") 

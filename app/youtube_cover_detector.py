@@ -26,6 +26,11 @@ from typing import Dict, Any
 import shutil
 import glob
 
+# Initialize queue and tasks at module level
+comparison_queue = asyncio.Queue()
+processing_tasks = {}
+active_tasks = {}
+
 THRESHOLD = config['THRESHOLD']
 
 
@@ -36,8 +41,41 @@ CQT_FEAT_DIR.mkdir(exist_ok=True, parents=True)
 
 #CSV_FILE = '/tmp/compared_videos.csv'
 CSV_FILE = config['SCORES_CSV_FILE']
-# Initialize FastAPI app
-app = FastAPI()
+
+async def process_queue():
+    while True:
+        try:
+            logger.info(f"Queue processor waiting for tasks. Current queue size: {comparison_queue.qsize()}")
+            request = await comparison_queue.get()
+            logger.info(f"Processing request {request['id']}")
+            
+            try:
+                detector = CoverDetector()
+                # Update status to downloading
+                request['status'] = 'downloading'
+                request['progress'] = 20
+                active_tasks[request['id']] = request
+                logger.info(f"Starting video comparison for request {request['id']}")
+                
+                result = await detector.compare_videos(request['url1'], request['url2'], request)
+                
+                # Update status to completed
+                request['status'] = 'completed'
+                request['result'] = result
+                request['progress'] = 100
+                active_tasks[request['id']] = request
+                logger.info(f"Request {request['id']} completed")
+            except Exception as e:
+                request['status'] = 'failed'
+                request['error'] = str(e)
+                request['progress'] = 0
+                logger.error(f"Error processing request {request['id']}: {e}")
+                active_tasks[request['id']] = request
+            finally:
+                comparison_queue.task_done()
+        except Exception as e:
+            logger.error(f"Error in queue processor: {e}")
+            await asyncio.sleep(1)  # Prevent tight loop on errors
 
 def setup_logger():
     logger = logging.getLogger('api')
@@ -54,7 +92,7 @@ def setup_logger():
 
 logger = setup_logger()
 
-def _generate_audio_from_youtube_id(youtube_id):
+def _generate_audio_from_youtube_id(youtube_id, request=None):
     try:
         logger.debug("Starting audio generation process")
         wav_folder = Path(WAV_FOLDER)
@@ -63,12 +101,35 @@ def _generate_audio_from_youtube_id(youtube_id):
         
         logger.info(f"Downloading video {youtube_id}...")
         
-        # Download with yt-dlp
+        def progress_hook(d):
+            if request and d['status'] == 'downloading':
+                try:
+                    # Calculate download progress
+                    total_bytes = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
+                    if total_bytes > 0:
+                        downloaded = d.get('downloaded_bytes', 0)
+                        progress = (downloaded / total_bytes) * 100
+                        speed = d.get('speed', 0)  # bytes per second
+                        eta = (total_bytes - downloaded) / speed if speed > 0 else 0
+                        
+                        request['download_progress'] = {
+                            'progress': progress,
+                            'speed': speed,
+                            'eta': eta,
+                            'total_bytes': total_bytes,
+                            'downloaded_bytes': downloaded
+                        }
+                        active_tasks[request['id']] = request
+                        logger.debug(f"Download progress: {progress:.1f}% at {speed/1024:.1f} KB/s, ETA: {eta:.1f}s")
+                except Exception as e:
+                    logger.error(f"Error in progress hook: {e}")
+
         ydl_opts = {
             'format': 'bestaudio/best',
             'quiet': False,
             'no_warnings': True,
-            'logger': logger,  # Add logger to yt-dlp
+            'logger': logger,
+            'progress_hooks': [progress_hook],  # Add progress hook
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
@@ -463,32 +524,61 @@ class CoverDetector:
         self.vectors_csv_file = config['VECTORS_CSV_FILE']
         self.process_only_first_n_seconds = config['PROCESS_ONLY_FIRST_N_SECONDS']
         
-    async def compare_videos(self, url1: str, url2: str) -> Dict[str, Any]:
+    async def compare_videos(self, url1: str, url2: str, request: Dict = None) -> Dict[str, Any]:
         try:
             start_time = time.time()
-            # Download and process videos
-            if asyncio.current_task().cancelled():
-                raise asyncio.CancelledError()
+            
+            # Update progress for first video download
+            if request:
+                request['status'] = 'downloading_first'
+                request['progress'] = 10
+                active_tasks[request['id']] = request
             
             video_id1 = extract_video_id(url1)
-            wav1 = _generate_audio_from_youtube_id(video_id1)
-            if asyncio.current_task().cancelled():
-                raise asyncio.CancelledError()
+            logger.info("Starting download of first video")
+            wav1 = _generate_audio_from_youtube_id(video_id1, request=request)
+            if request:
+                request['progress'] = 25
+                active_tasks[request['id']] = request
+            
+            # Update progress for second video download
+            if request:
+                request['status'] = 'downloading_second'
+                request['progress'] = 30
+                active_tasks[request['id']] = request
             
             video_id2 = extract_video_id(url2)
-            wav2 = _generate_audio_from_youtube_id(video_id2)
-            if asyncio.current_task().cancelled():
-                raise asyncio.CancelledError()
+            logger.info("Starting download of second video")
+            wav2 = _generate_audio_from_youtube_id(video_id2, request=request)
+            if request:
+                request['progress'] = 45
+                active_tasks[request['id']] = request
+            
+            # Update progress for processing
+            if request:
+                request['status'] = 'processing'
+                request['progress'] = 50
+                active_tasks[request['id']] = request
             
             # Get WAV file paths
             wav_path1 = os.path.join(self.wav_folder, wav1)
             wav_path2 = os.path.join(self.wav_folder, wav2)
+            
+            if request:
+                request['status'] = 'generating_embeddings'
+                request['progress'] = 60
+                active_tasks[request['id']] = request
             
             # Generate embeddings
             embeddings = _generate_embeddings_from_filepaths(wav_path1, wav_path2)
             keys = list(embeddings.keys())
             embedding1 = embeddings[keys[0]]
             embedding2 = embeddings[keys[1]]
+            
+            if request:
+                request['status'] = 'comparing'
+                request['progress'] = 80
+                active_tasks[request['id']] = request
             
             # Calculate distance and determine if it's a cover
             distance = _cosine_distance(embedding1, embedding2)
@@ -499,6 +589,11 @@ class CoverDetector:
             elapsed_time = time.time() - start_time
             # Write result to CSV
             write_compared_video(url1, url2, result, float(distance), elapsed_time=round(elapsed_time, 2))
+            
+            if request:
+                request['status'] = 'saving_results'
+                request['progress'] = 90
+                active_tasks[request['id']] = request
             
             return {"result": result, "score": float(distance)}
             
@@ -562,3 +657,19 @@ def get_average_processing_time() -> float:
 if __name__ == '__main__':
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8080)
+
+# Make sure the function is exported
+__all__ = [
+    'extract_video_id',
+    '_cosine_distance',
+    '_generate_embeddings_from_filepaths',
+    '_generate_dataset_txt_from_files',
+    'get_average_processing_time',
+    'comparison_queue',
+    'get_result_from_csv',
+    'CoverDetector',
+    'cleanup_temp_files',
+    'read_compared_videos',
+    'process_queue',
+    'logger'
+]
