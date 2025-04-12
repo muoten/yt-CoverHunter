@@ -23,6 +23,8 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import io
 from typing import Dict, Any
+import shutil
+import glob
 
 THRESHOLD = config['THRESHOLD']
 
@@ -194,30 +196,6 @@ def prepare_cover_detection(youtube_url1, youtube_url2):
     return audio1, audio2
     
 
-def _debug_cover_detection():
-  
-    #YOUTUBE_ID1 = 'GbpnAGajyMc'
-    YOUTUBE_ID1 = 'pFKiJDxBp4c'
-    #YOUTUBE_ID1 = 'dQw4w9WgXcQ'
-    #YOUTUBE_ID2 = 'Qr0-7Ds79zo'
-    YOUTUBE_ID2 = 'kqXSBe-qMGo'
-    #YOUTUBE_ID3 = '9egB_8-bvUY'
-    ALREADY_DOWNLOADED = False
-    if not ALREADY_DOWNLOADED:
-        youtube_url1 = f'https://www.youtube.com/watch?v={YOUTUBE_ID1}'
-        youtube_url2 = f'https://www.youtube.com/watch?v={YOUTUBE_ID2}'
-        audio1, audio2 = prepare_cover_detection(youtube_url1, youtube_url2)
-    else:
-         audio1 = f'{YOUTUBE_ID1}.wav'
-         audio2 = f'{YOUTUBE_ID2}.wav'	
-
-    distance = cover_detection(audio1, audio2)
-    print(distance) 
-    if distance < THRESHOLD:
-        print("COVER")
-    else:
-        print("NOT COVER")
-
 class YoutubeCoverDetector:
     def __init__(self):
         """Initialize the model"""
@@ -368,7 +346,6 @@ def read_compared_videos():
             reader = csv.DictReader(file, fieldnames=['url1', 'url2', 'result', 'score', 'feedback', 'elapsed_time'])
             next(reader)  # Skip header row
             for row in reader:
-                logger.debug(f"Read row from CSV: {row}")
                 compared_videos.append(row)
     except FileNotFoundError:
         logger.debug("CSV file not found. Creating a new file with headers.")
@@ -377,24 +354,48 @@ def read_compared_videos():
             writer.writeheader()
     return compared_videos
 
-def write_compared_video(url1: str, url2: str, result: str, score: float, elapsed_time: float = None):
-    """Write the comparison result to CSV."""
-    logger.debug(f"Starting write_compared_video with params: {url1}, {url2}, {result}, {score}, elapsed_time={elapsed_time}")
+def write_compared_video(url1: str, url2: str, result: str, score: float, elapsed_time: float = None) -> None:
+    """Write the comparison result to a CSV file"""
     try:
-        # Create directory if it doesn't exist
-        os.makedirs(os.path.dirname(CSV_FILE), exist_ok=True)
+        logger.debug(f"Starting write_compared_video with params: {url1}, {url2}, {result}, {score}, elapsed_time={elapsed_time}")
         
-        # Create file with headers if it doesn't exist
-        if not os.path.exists(CSV_FILE):
-            with open(CSV_FILE, mode='w', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow(['url1', 'url2', 'result', 'score', 'feedback', 'elapsed_time'])
+        # Create backup directories if they don't exist
+        backup_dir = os.path.dirname(config['SCORES_CSV_FILE_BACKUP'])
+        os.makedirs(backup_dir, exist_ok=True)
         
-        # Write the new row
-        with open(CSV_FILE, mode='a', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow([url1, url2, result, score, None, elapsed_time])
-            logger.debug(f"Successfully wrote row to CSV with elapsed_time: {elapsed_time}")
+        # Always check and log last backup time
+        # Find most recent backup by checking all backup files
+        backup_pattern = f"{config['SCORES_CSV_FILE_BACKUP']}_*"
+        backup_files = glob.glob(backup_pattern)
+        
+        if backup_files:
+            # Get the most recent backup file's timestamp
+            last_backup_time = max(os.path.getmtime(f) for f in backup_files)
+        else:
+            last_backup_time = 0
+        
+        logger.info(f"Last backup time: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(last_backup_time))}")
+        
+        # Check if backup is needed (before writing new data)
+        if os.path.exists(config['SCORES_CSV_FILE']):
+            if time.time() - last_backup_time > config['BACKUP_INTERVAL']:  # Use config['BACKUP_INTERVAL']
+                logger.info("Creating backup of CSV files...")
+                backup_suffix = time.strftime('%Y%m%d_%H%M%S')
+                shutil.copy(config['SCORES_CSV_FILE'], f"{config['SCORES_CSV_FILE_BACKUP']}_{backup_suffix}")
+                shutil.copy(config['VECTORS_CSV_FILE'], f"{config['VECTORS_CSV_FILE_BACKUP']}_{backup_suffix}")
+                logger.info("Backup completed successfully")
+        
+        # Write the new comparison result
+        with open(config['SCORES_CSV_FILE'], 'a', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=['url1', 'url2', 'result', 'score', 'feedback', 'elapsed_time'])
+            writer.writerow({
+                'url1': url1,
+                'url2': url2, 
+                'result': result,
+                'score': str(score),
+                'feedback': '',
+                'elapsed_time': str(elapsed_time) if elapsed_time is not None else ''
+            })
     except Exception as e:
         logger.error(f"Error writing to CSV: {e}")
         raise
@@ -404,17 +405,12 @@ def write_compared_video(url1: str, url2: str, result: str, score: float, elapse
     logger.debug("Finished write_compared_video function")
 
 def log_csv_contents():
-    logger.debug("##### Current contents of the CSV file #####")
     try:
         compared_videos = read_compared_videos()
         if not compared_videos:
-            logger.debug("CSV file is empty")
-        else:
-            for video in compared_videos:
-                logger.debug(f"CSV entry: {video}")
+            logger.info("CSV file is empty")
     except Exception as e:
         logger.error(f"Error reading CSV contents: {e}")
-    logger.debug("############################################")
 
 class VideoURLs(BaseModel):
     youtube_url1: str
@@ -432,53 +428,6 @@ def get_result_from_csv(url1: str, url2: str):
             }
     return None
 
-def cover_detection(youtube_url1, youtube_url2):
-    """Detect if two YouTube videos are covers of each other."""
-    try:
-        # Get video IDs
-        video_id1 = extract_video_id(youtube_url1)
-        video_id2 = extract_video_id(youtube_url2)
-
-        # Generate audio files if needed
-        _generate_audio_from_youtube_id(video_id1)
-        _generate_audio_from_youtube_id(video_id2)
-
-        # Get WAV file paths
-        wav_path1 = os.path.join(config['WAV_FOLDER'], f"{video_id1}.wav")
-        wav_path2 = os.path.join(config['WAV_FOLDER'], f"{video_id2}.wav")
-
-        # Generate embeddings
-        embeddings = _generate_embeddings_from_filepaths(wav_path1, wav_path2)
-        # Get embeddings from dictionary using keys
-        keys = list(embeddings.keys())
-        embedding1 = embeddings[keys[0]]
-        embedding2 = embeddings[keys[1]]
-        
-        # Save embeddings to vectors.csv
-        try:
-            with open(config['VECTORS_CSV_FILE'], 'a', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow([youtube_url1, embedding1.tolist()])
-                writer.writerow([youtube_url2, embedding2.tolist()])
-        except Exception as e:
-            logger.error(f"Error saving to vectors.csv: {e}")
-            # Continue even if saving fails
-        
-        # Calculate distance
-        distance = _cosine_distance(embedding1, embedding2)
-
-        # Determine if it's a cover based on threshold
-        threshold = float(config.get('THRESHOLD', 0.3))
-        is_cover = distance < threshold
-
-        return {
-            "distance": str(distance),  # Convert to string to avoid JSON serialization issues
-            "is_cover": is_cover
-        }
-
-    except Exception as e:
-        logger.error(f"Error in cover detection: {e}")
-        raise
 
 def extract_video_id(url):
     """Extract video ID from YouTube URL"""

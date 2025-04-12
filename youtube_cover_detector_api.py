@@ -30,7 +30,6 @@ from app.youtube_cover_detector import (
     _cosine_distance, 
     _generate_embeddings_from_filepaths,
     _generate_dataset_txt_from_files,
-    cover_detection as youtube_cover_detection,
     get_average_processing_time
 )
 from app.parse_config import config
@@ -155,14 +154,8 @@ def setup_cookies():
 if YT_DLP_USE_COOKIES:
     COOKIE_FILE = setup_cookies()
 
-# Import local modules after environment setup
-from app.youtube_cover_detector import YoutubeCoverDetector, prepare_cover_detection, cover_detection
 
-# Use Render's persistent storage if available
-if os.getenv('RENDER'):
-    WAV_DIR = Path("/opt/render/project/wav_files")
-else:
-    WAV_DIR = Path("/tmp/youtube_cover_detector_api_wav")
+WAV_DIR = Path("/tmp/youtube_cover_detector_api_wav")
 
 # Create WAV directory with proper permissions
 WAV_DIR.mkdir(exist_ok=True, parents=True)
