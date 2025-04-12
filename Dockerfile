@@ -68,4 +68,4 @@ VOLUME /data
 
 # Run the application
 CMD ["sh", "-c", "echo 'Starting container...' && PYTHONUNBUFFERED=1 uvicorn youtube_cover_detector_api:app --host $HOST --port $PORT --workers 4 --log-level debug --reload --access-log --use-colors"]
-#CMD ["python", "youtube_cover_detector_api.py"]
+EXPOSE 8080
