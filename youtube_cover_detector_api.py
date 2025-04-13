@@ -223,6 +223,13 @@ comparison_queue = Queue()
 @app.on_event("startup")
 async def startup_event():
     """Start the queue processor on app startup"""
+    # Check if model exists
+    model_path = os.path.join(config['MODEL_FOLDER'], 'checkpoints/g_00000043')
+    if not os.path.exists(model_path):
+        logger.error(f"Model file not found at {model_path}")
+        # Exit the application if model is missing
+        sys.exit(1)
+        
     logger.info("Starting queue processor...")
     start_background_worker(comparison_queue, shared_active_tasks)
     logger.info("Queue processor started")

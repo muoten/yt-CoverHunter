@@ -6,6 +6,7 @@ import logging
 from typing import Dict, Any
 from app.youtube_cover_detector import CoverDetector, logger
 from multiprocessing import Process
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,13 @@ def process_queue_forever(queue, active_tasks):
         logger.info("Successfully initialized CoverDetector")
     except Exception as e:
         logger.error(f"Failed to initialize CoverDetector: {e}")
-        return
+        # Mark any existing tasks as failed
+        for task_id in active_tasks:
+            active_tasks[task_id]['status'] = 'failed'
+            active_tasks[task_id]['error'] = str(e)
+            active_tasks[task_id]['progress'] = 0
+        # Exit the process
+        sys.exit(1)
         
     while True:
         try:
@@ -34,15 +41,14 @@ def process_queue_forever(queue, active_tasks):
                 
                 try:
                     # Update status to downloading
-                    request['status'] = 'downloading_first'
+                    request['status'] = 'downloading'
                     request['progress'] = 20
                     request['message'] = 'Downloading first video...'
                     active_tasks[request['id']] = request
                     
-                    # Run async method in the event loop
-                    result = loop.run_until_complete(
-                        detector.compare_videos(request['url1'], request['url2'], request)
-                    )
+                    # Process the request using the initialized detector
+                    result = loop.run_until_complete(detector.compare_videos(
+                        request['url1'], request['url2'], request))
                     
                     # Update status to completed
                     request['status'] = 'completed'
