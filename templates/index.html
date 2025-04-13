@@ -900,16 +900,20 @@
                 // Show result container for non-busy states
                 document.getElementById('result').style.display = 'block';
                 
+                // Get existing feedback from compared videos history
+                const existingFeedback = await checkExistingResult(video1, video2);
+                const feedback = existingFeedback ? existingFeedback.feedback : null;
+                
                 // Handle immediate result
                 if (data.status === 'completed') {
-                    displayResult(data.result.result, data.result.score);
-                    updateProgress(100, 'completed');  // Show completed immediately
+                    displayResult(data.result.result, data.result.score, feedback);
+                    updateProgress(100, 'completed');
                     await fetchComparedVideos();
                 } else {
                     // Poll for results if not immediate
                     try {
                         const result = await pollForResults(data.request_id);
-                        displayResult(result.result, result.score);
+                        displayResult(result.result, result.score, feedback);
                         await fetchComparedVideos();
                     } catch (error) {
                         console.error('Error polling results:', error);
@@ -1101,8 +1105,15 @@
                 
                 const data = await response.json();
                 if (data.status === 'success') {
-                    // Update UI to reflect the feedback
+                    // Update both the history and the current result display
                     await fetchComparedVideos();
+                    
+                    // Get the current result from the detection result div
+                    const resultText = document.querySelector('#detection-result .result-text').textContent;
+                    const confidenceText = document.querySelector('#detection-result .confidence-text').textContent;
+                    
+                    // Update the main result display with the new feedback
+                    displayResult(resultText, confidenceText.split(' ')[0], feedback);
                 }
             } catch (error) {
                 console.error('Error submitting feedback:', error);
@@ -1358,29 +1369,24 @@
         // Update the detection result display
         function displayResult(result, score, feedback = null) {
             const detectionResultDiv = document.getElementById('detection-result');
-            const confidence = getConfidenceText(score);
-            const isNotOk = feedback === 'not-ok';
-            const correctedResult = result === 'Cover' ? 'Not Cover' : 'Cover';
+            let displayResult = result;
+            let displayConfidence = getConfidenceText(score);
             
+            // Only modify the result and confidence if there is feedback and it's not-ok
+            if (feedback === 'not-ok') {
+                displayResult = result === 'Cover' ? 'Not Cover' : 'Cover';
+                displayConfidence = 'Manual review';
+            }
+
+            // Add classes based on the original result, not the display result
             detectionResultDiv.innerHTML = `
-                <p>
-                    <strong>Result:</strong> 
-                    <span class="result-text ${result === 'Cover' ? 'is-cover' : 'not-cover'}">${result}</span>
-                    ${isNotOk ? ` → <em class="corrected-result">${correctedResult}</em>` : ''}
+                <p><strong>Result:</strong> 
+                    <span class="result-text ${feedback === 'not-ok' ? 'corrected-result' : (result === 'Cover' ? 'is-cover' : 'not-cover')}">${displayResult}</span>
                 </p>
-                <p>
-                    <strong>Confidence:</strong> 
-                    <span class="confidence-text">${confidence}</span>
-                    ${isNotOk ? ' <em class="corrected-note">Manual review</em>' : ''}
+                <p><strong>Confidence:</strong> 
+                    <span class="confidence-text ${feedback === 'not-ok' ? 'corrected-note' : ''}">${displayConfidence}</span>
                 </p>
             `;
-            
-            // Add feedback-not-ok class to parent for consistent styling
-            if (isNotOk) {
-                detectionResultDiv.classList.add('feedback-not-ok');
-            } else {
-                detectionResultDiv.classList.remove('feedback-not-ok');
-            }
         }
 
         // Add queue status polling
