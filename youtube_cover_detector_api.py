@@ -219,15 +219,12 @@ manager = Manager()
 shared_active_tasks = manager.dict()
 comparison_queue = Queue()
 
-# Start background worker process
-worker_process = Process(target=start_background_worker, args=(comparison_queue, shared_active_tasks))
-worker_process.daemon = True
-
+# Initialize the background worker
 @app.on_event("startup")
 async def startup_event():
     """Start the queue processor on app startup"""
-    if not worker_process.is_alive():
-        worker_process.start()
+    logger.info("Starting queue processor...")
+    start_background_worker(comparison_queue, shared_active_tasks)
     logger.info("Queue processor started")
 
 # Initialize CSV files if they don't exist
