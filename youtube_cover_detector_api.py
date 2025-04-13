@@ -201,17 +201,22 @@ async def get_compared_videos():
 
 @app.get("/api/queue-status")
 async def get_queue_status():
-    """Get current queue status - this should always work"""
+    """Get current queue status"""
     # Count both queued tasks and tasks that are currently processing
     processing_tasks = len([t for t in shared_active_tasks.values() 
                           if t.get('status') in ['pending', 'downloading', 'downloading_first', 
-                                                'downloading_second', 'processing']])
+                                               'downloading_second', 'processing']])
     queued_tasks = comparison_queue.qsize()
+    
+    # Read the CSV to count completed comparisons
+    with open(config['SCORES_CSV_FILE'], 'r') as f:
+        csv_reader = csv.reader(f)
+        next(csv_reader)  # Skip header
+        completed_count = sum(1 for row in csv_reader)  # Count actual rows
     
     return {
         "pending_tasks": queued_tasks + processing_tasks,
-        "queued": queued_tasks,
-        "processing": processing_tasks
+        "completed_comparisons": completed_count
     }
 
 # Create shared queues and dictionaries

@@ -755,8 +755,8 @@
             </div>
             <div class="history-section">
                 <h2>Last analyzed videos</h2>
-                <div id="queue-status" class="queue-status">
-                    <p>Queue: <span id="queue-count">0</span> pending</p>
+                <div class="queue-status">
+                    <span id="completed-count">0</span> comparisons done. Queue: <span id="queue-count">0</span> pending
                 </div>
                 <div id="compared-videos-list"></div>
             </div>
@@ -1389,6 +1389,7 @@
                 const response = await fetch(`${API_URL}/queue-status`);
                 const data = await response.json();
                 document.getElementById('queue-count').textContent = data.pending_tasks;
+                document.getElementById('completed-count').textContent = data.completed_comparisons;
             } catch (error) {
                 console.error('Error updating queue:', error);
             }
