@@ -1408,17 +1408,12 @@
                 const data = await response.json();
                 console.log('Queue status response:', data);  // Debug log
                 
-                // Get the task count from the message if status is busy
-                if (data.status === 'busy' && data.message) {
-                    const match = data.message.match(/(\d+)/);  // Extract number from message
-                    const pendingTasks = match ? match[0] : '?';
-                    document.getElementById('queue-count').textContent = pendingTasks;
-                } else {
-                    document.getElementById('queue-count').textContent = '?';
-                }
-                
-                // Keep track of completed comparisons if available
-                document.getElementById('completed-count').textContent = data.completed_comparisons || '0';
+                // Use the pending_tasks and completed_comparisons directly from the response
+                document.getElementById('queue-count').textContent = 
+                    typeof data.pending_tasks === 'number' ? data.pending_tasks : '?';
+                document.getElementById('completed-count').textContent = 
+                    typeof data.completed_comparisons === 'number' ? data.completed_comparisons : '0';
+            
             } catch (error) {
                 console.error('Error updating queue:', error);
                 document.getElementById('queue-count').textContent = '?';
