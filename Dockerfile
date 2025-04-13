@@ -39,6 +39,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Create necessary directories
 RUN mkdir -p /code/pretrain_model/checkpoints \
+    /code/pretrain_model/config \
     /code/static \
     /code/templates \
     /code/data/covers80_testset \
@@ -47,6 +48,10 @@ RUN mkdir -p /code/pretrain_model/checkpoints \
     /data \
     && chmod -R 777 /tmp/youtube_cover_detector_api_wav \
     && chmod -R 777 /tmp/.cache
+
+# Copy model files first - this layer will be cached unless model files change
+COPY pretrain_model/checkpoints/g_00000043 /code/pretrain_model/checkpoints/g_00000043
+COPY pretrain_model/config/hparams.yaml /code/pretrain_model/config/hparams.yaml
 
 # Install nano at the end to avoid cache invalidation of previous layers
 RUN apt-get update && apt-get install -y nano && rm -rf /var/lib/apt/lists/*
@@ -58,10 +63,6 @@ COPY src/ /code/src/
 COPY youtube_cover_detector_api.py /code/
 COPY templates/ /code/templates/
 COPY data/ /code/data/
-COPY pretrain_model/ /code/pretrain_model/
-
-# Download model file if needed
-RUN curl -L https://your-model-url/checkpoint.pt -o /code/pretrain_model/checkpoints/checkpoint.pt || echo "Warning: Model file not downloaded"
 
 # Create volume for persistent data
 VOLUME /data
