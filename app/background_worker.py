@@ -56,4 +56,9 @@ def process_queue_forever(queue, active_tasks):
 
 def start_background_worker(queue, active_tasks):
     """Start the background worker process"""
-    process_queue_forever(queue, active_tasks) 
+    # Create a new process to handle the queue
+    from multiprocessing import Process
+    process = Process(target=process_queue_forever, args=(queue, active_tasks))
+    process.daemon = True  # Set as daemon so it terminates when main process ends
+    process.start()
+    logger.info(f"Started background worker process with PID {process.pid}") 
