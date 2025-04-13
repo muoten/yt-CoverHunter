@@ -17,16 +17,22 @@ def process_queue_forever(queue, active_tasks):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     
+    # Initialize detector once for reuse
+    try:
+        detector = CoverDetector()
+        logger.info("Successfully initialized CoverDetector")
+    except Exception as e:
+        logger.error(f"Failed to initialize CoverDetector: {e}")
+        return
+        
     while True:
         try:
             if not queue.empty():
                 logger.info(f"Queue processor waiting for tasks. Current queue size: {queue.qsize()}")
-                request = queue.get()  # Get the next request from queue
+                request = queue.get()
                 logger.info(f"Processing request {request['id']}")
                 
                 try:
-                    detector = CoverDetector()
-                    
                     # Update status to downloading
                     request['status'] = 'downloading_first'
                     request['progress'] = 20

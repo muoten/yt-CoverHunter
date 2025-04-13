@@ -516,6 +516,12 @@ def cleanup_temp_files(url1: str, url2: str):
 
 class CoverDetector:
     def __init__(self):
+        # Initialize model path from config
+        self.model_path = os.path.join(config['MODEL_FOLDER'], 'checkpoints/g_00000043')
+        if not os.path.exists(self.model_path):
+            raise FileNotFoundError(f"Model file not found at {self.model_path}")
+        logger.info(f"Using model at {self.model_path}")
+        
         self.threshold = config['THRESHOLD']
         self.wav_folder = config['WAV_FOLDER']
         self.model_folder = config['MODEL_FOLDER']
