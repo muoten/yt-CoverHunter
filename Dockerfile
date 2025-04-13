@@ -49,9 +49,13 @@ RUN mkdir -p /code/pretrain_model/checkpoints \
     && chmod -R 777 /tmp/youtube_cover_detector_api_wav \
     && chmod -R 777 /tmp/.cache
 
-# Copy model files first - this layer will be cached unless model files change
-COPY pretrain_model/checkpoints/g_00000043 /code/pretrain_model/checkpoints/g_00000043
+# Create model directories
+RUN mkdir -p /code/pretrain_model/checkpoints /code/pretrain_model/config
+
 COPY pretrain_model/config/hparams.yaml /code/pretrain_model/config/hparams.yaml
+
+# Download model files from Hugging Face
+RUN wget -O /code/pretrain_model/checkpoints/g_00000043 https://huggingface.co/muoten/yt-coverhunter/resolve/main/checkpoint.pt
 
 # Install nano at the end to avoid cache invalidation of previous layers
 RUN apt-get update && apt-get install -y nano && rm -rf /var/lib/apt/lists/*
