@@ -876,26 +876,25 @@
                     })
                 });
                 
-                const data = await response.json();
-                console.log('Received response:', data);
-                
                 // Show progress container for all states
                 document.getElementById('progress-container').style.display = 'block';
-                
-                // Handle busy status first
-                if (data.status === 'busy') {
-                    updateProgress(0, data);  // Show busy message in progress bar
+
+                // Handle non-OK responses before parsing JSON
+                if (!response.ok) {
+                    if (response.status === 503) {  // Service Unavailable
+                        updateProgress(0, `System busy, please try later`);
+                    } else {
+                        updateProgress(0, `Error: Server returned ${response.status}`);
+                    }
                     setTimeout(() => {
                         document.getElementById('progress-container').style.display = 'none';
                         submitButton.disabled = false;
                     }, 3000);
-                    return;  // Exit early
+                    return;
                 }
-                
-                // Then check for other errors
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
+
+                const data = await response.json();
+                console.log('Received response:', data);
                 
                 // Show result container for non-busy states
                 document.getElementById('result').style.display = 'block';
@@ -1389,15 +1388,20 @@
             `;
         }
 
-        // Add queue status polling
+        // Update queue status function to handle errors
         async function updateQueueStatus() {
             try {
                 const response = await fetch(`${API_URL}/queue-status`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
                 const data = await response.json();
-                document.getElementById('queue-count').textContent = data.pending_tasks;
-                document.getElementById('completed-count').textContent = data.completed_comparisons;
+                document.getElementById('queue-count').textContent = data.pending_tasks || '?';
+                document.getElementById('completed-count').textContent = data.completed_comparisons || '0';
             } catch (error) {
                 console.error('Error updating queue:', error);
+                document.getElementById('queue-count').textContent = '?';
+                document.getElementById('completed-count').textContent = '0';
             }
         }
         
