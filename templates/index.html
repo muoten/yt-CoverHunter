@@ -1190,6 +1190,9 @@
                 loadThumbnail(video2Input.value, 2);
                 detectionResultDiv.innerHTML = '';  // Clear the result
             }, 500));
+
+            // Set up polling interval here
+            setInterval(updateQueueStatus, 5000);
         });
 
         // Add this function to check if player is ready
@@ -1420,9 +1423,6 @@
                 document.getElementById('completed-count').textContent = '0';
             }
         }
-        
-        // Poll queue status every 5 seconds
-        setInterval(updateQueueStatus, 5000);
     </script>
 </body>
 </html> 
