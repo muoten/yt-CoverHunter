@@ -503,28 +503,6 @@ last_median_calculation = None
 cached_median = None
 MEDIAN_CACHE_DURATION = timedelta(minutes=5)
 
-def get_recent_processing_times():
-    """Get list of recent processing times from completed comparisons"""
-    # Read from the CSV file
-    try:
-        with open('processing_times.csv', 'r') as f:
-            reader = csv.reader(f)
-            # Skip header
-            next(reader)
-            # Get last 3 entries
-            times = []
-            for row in reader:
-                if len(row) >= 2:  # Ensure row has enough columns
-                    try:
-                        process_time = float(row[1])
-                        times.append(process_time)
-                    except (ValueError, IndexError):
-                        continue
-            # Return last 3 times
-            return times[-3:]
-    except (FileNotFoundError, IOError):
-        return []
-
 @lru_cache(maxsize=1)
 def calculate_median_processing_time(recent_entries_tuple):
     """Calculate median processing time from recent entries"""
