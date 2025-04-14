@@ -47,9 +47,6 @@ from app.youtube_cover_detector import (
 import math
 from multiprocessing import Process, Queue, Manager
 from app.background_worker import start_background_worker
-from functools import lru_cache
-from datetime import datetime, timedelta
-import statistics
 
 #First version that works! Though it takes more than 3 minutes to run in fly.dev free tier
 YT_DLP_USE_COOKIES = os.getenv('YT_DLP_USE_COOKIES', False)
@@ -498,41 +495,6 @@ async def check_if_cover(request: VideoRequest, background_tasks: BackgroundTask
         logger.error(f"Error in check_if_cover: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# Add these variables
-last_median_calculation = None
-cached_median = None
-MEDIAN_CACHE_DURATION = timedelta(minutes=5)
-
-@lru_cache(maxsize=1)
-def calculate_median_processing_time(recent_entries_tuple):
-    """Calculate median processing time from recent entries"""
-    times = list(recent_entries_tuple)
-    if not times:
-        return None
-    return round(statistics.median(times))
-
-def get_median_processing_time():
-    """Get median processing time with caching"""
-    global last_median_calculation, cached_median
-    
-    now = datetime.now()
-    if (last_median_calculation is None or 
-        now - last_median_calculation > MEDIAN_CACHE_DURATION):
-        
-        # Read recent processing times
-        recent_times = get_recent_processing_times()
-        
-        # Convert to tuple for caching
-        times_tuple = tuple(recent_times)
-        
-        # Calculate new median
-        cached_median = calculate_median_processing_time(times_tuple)
-        last_median_calculation = now
-        
-        logger.info(f"Updated median processing time: {cached_median} seconds")
-    
-    return cached_median
-
 @app.get("/api/comparison-status/{request_id}")
 async def get_comparison_status(request_id: str):
     """Get the status of a comparison request"""
@@ -543,7 +505,7 @@ async def get_comparison_status(request_id: str):
             del shared_active_tasks[request_id]
         else:
             # Add estimated time remaining based on median of last 3 processes
-            avg_time = get_median_processing_time()  # This gets median of last 3 entries
+            avg_time = get_average_processing_time()  # This gets median of last 3 entries
             start_time = task.get('start_time', time.time())
             elapsed = time.time() - start_time
             
