@@ -564,10 +564,12 @@ async def get_comparison_status(request_id: str):
             # Remove completed task from active tasks
             del shared_active_tasks[request_id]
         else:
-            # Add estimated time remaining based on median of last 3 processes
-            avg_time = get_median_processing_time()  # This gets median of last 3 entries
+            # Get median processing time
+            avg_time = get_median_processing_time()
+            
+            # Calculate elapsed time
             start_time = task.get('start_time', time.time())
-            elapsed = time.time() - start_time
+            elapsed = (datetime.now() - start_time).total_seconds()
             
             # Check for timeout
             if elapsed > config['REQUEST_TIMEOUT']:
@@ -575,8 +577,12 @@ async def get_comparison_status(request_id: str):
                 task['error'] = 'Request timed out'
                 return task
             
-            # Calculate remaining time
-            remaining = max(0, avg_time - elapsed)
+            # Calculate remaining time, handling None case
+            if avg_time is None:
+                # If we don't have historical data, use a default estimate
+                remaining = 180  # 3 minutes default
+            else:
+                remaining = max(0, avg_time - elapsed)
             
             # If less than 1 second remaining but not done, extend to timeout
             if remaining < 1 and task['status'] != 'completed':
@@ -594,7 +600,11 @@ async def get_comparison_status(request_id: str):
                 task['progress'] = 30 + ((elapsed - 10) / 15) * 40
             else:
                 task['status'] = 'calculating_similarity'
-                task['progress'] = 70 + ((elapsed - 25) / (avg_time - 25)) * 25
+                # Only use avg_time for progress if it exists
+                if avg_time is not None:
+                    task['progress'] = 70 + ((elapsed - 25) / (avg_time - 25)) * 25
+                else:
+                    task['progress'] = 70  # Stay at 70% if no avg_time available
             
             task['progress'] = min(95, task['progress'])
         
