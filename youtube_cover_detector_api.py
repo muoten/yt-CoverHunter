@@ -444,8 +444,14 @@ async def health_check():
     }
 
 @app.post("/api/check-if-cover")
-async def check_if_cover(request: VideoRequest, background_tasks: BackgroundTasks):
+async def check_if_cover(request: VideoRequest):
+    """Start a new comparison task"""
     try:
+        video_key = f"{request.video_url1}_{request.video_url2}"
+        
+        # Calculate median time once at start
+        avg_time = get_average_processing_time()
+        
         # Check if videos were already compared
         existing_result = get_result_from_csv(request.video_url1, request.video_url2)
         if existing_result:
@@ -477,7 +483,9 @@ async def check_if_cover(request: VideoRequest, background_tasks: BackgroundTask
             'url1': request.video_url1,
             'url2': request.video_url2,
             'status': 'pending',
-            'start_time': time.time()
+            'start_time': time.time(),
+            'estimated_time': avg_time,  # Add estimated time here
+            'progress': 0
         }
         
         logger.info(f"Adding request {request_id} to queue")
@@ -504,10 +512,9 @@ async def get_comparison_status(request_id: str):
             # Remove completed task from active tasks
             del shared_active_tasks[request_id]
         else:
-            # Add estimated time remaining based on median of last 3 processes
-            avg_time = get_average_processing_time()  # This gets median of last 3 entries
             start_time = task.get('start_time', time.time())
             elapsed = time.time() - start_time
+            avg_time = task.get('estimated_time')  # Use stored estimate
             
             # Check for timeout
             if elapsed > config['REQUEST_TIMEOUT']:
