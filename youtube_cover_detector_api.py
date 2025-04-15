@@ -202,22 +202,24 @@ async def get_compared_videos():
 @app.get("/api/queue-status")
 async def get_queue_status():
     """Get current queue status"""
-    # Count both queued tasks and tasks that are currently processing
-    processing_tasks = len([t for t in shared_active_tasks.values() 
-                          if t.get('status') in ['pending', 'downloading', 'downloading_first', 
-                                               'downloading_second', 'processing']])
-    queued_tasks = comparison_queue.qsize()
-    
-    # Read the CSV to count completed comparisons
-    with open(config['SCORES_CSV_FILE'], 'r') as f:
-        csv_reader = csv.reader(f)
-        next(csv_reader)  # Skip header
-        completed_count = sum(1 for row in csv_reader)  # Count actual rows
-    
-    return {
-        "pending_tasks": queued_tasks + processing_tasks,
-        "completed_comparisons": completed_count
-    }
+    try:
+        # Get counts with caching
+        current_time = time.time()
+        if not hasattr(get_queue_status, 'last_update') or \
+           current_time - get_queue_status.last_update > 5:  # Cache for 5 seconds
+            
+            get_queue_status.pending_tasks = len([t for t in shared_active_tasks.values() 
+                                                if t.get('status') != 'completed'])
+            get_queue_status.completed_comparisons = len(read_compared_videos())
+            get_queue_status.last_update = current_time
+            
+        return {
+            "pending_tasks": get_queue_status.pending_tasks,
+            "completed_comparisons": get_queue_status.completed_comparisons
+        }
+    except Exception as e:
+        logger.error(f"Error getting queue status: {str(e)}")
+        return {"error": str(e)}
 
 # Create shared queues and dictionaries
 manager = Manager()

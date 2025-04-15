@@ -940,6 +940,9 @@
 
         async function pollForResults(requestId, maxAttempts = 60) {
             let attempts = 0;
+            let delay = 3000; // Start with 3 seconds
+            const MAX_DELAY = 10000; // Max 10 seconds
+            const BACKOFF_FACTOR = 1.5; // Increase delay by 50% each time
             
             while (attempts < maxAttempts) {
                 try {
@@ -962,11 +965,18 @@
                     // Update progress with download progress if available
                     updateProgress(data.progress || 0, data);
                     
-                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    // Wait with increasing delay
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay = Math.min(delay * BACKOFF_FACTOR, MAX_DELAY); // More aggressive backoff
                     attempts++;
+
+                    // Add early exit if progress is slow
+                    if (attempts > 10 && data.progress < 20) {
+                        throw new Error('Processing is taking longer than expected');
+                    }
                 } catch (error) {
                     console.error('Error polling results:', error);
-                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    await new Promise(resolve => setTimeout(resolve, delay));
                     attempts++;
                 }
             }
@@ -1192,7 +1202,7 @@
             }, 500));
 
             // Set up polling interval here
-            setInterval(updateQueueStatus, 10000);
+            startQueueStatusPolling();
         });
 
         // Add this function to check if player is ready
@@ -1422,6 +1432,12 @@
                 document.getElementById('queue-count').textContent = '?';
                 document.getElementById('completed-count').textContent = '0';
             }
+        }
+
+        // Reduce frequency of queue status updates
+        function startQueueStatusPolling() {
+            const QUEUE_POLL_INTERVAL = 10000; // 10 seconds
+            setInterval(updateQueueStatus, QUEUE_POLL_INTERVAL);
         }
     </script>
 </body>
