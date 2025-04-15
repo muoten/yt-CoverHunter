@@ -943,8 +943,13 @@
             let delay = 3000; // Start with 3 seconds
             const MAX_DELAY = 10000; // Max 10 seconds
             const BACKOFF_FACTOR = 1.5; // Increase delay by 50% each time
-            
+            const REQUEST_TIMEOUT = 60; // Server-side timeout matching client MAX_TOTAL_TIME
+            let startTime = Date.now();
             while (attempts < maxAttempts) {
+                total_time = Date.now() - startTime;
+                    if (total_time > REQUEST_TIMEOUT*1000) {
+                        throw new Error('Operation timed out. Please try again later.');
+                    }
                 try {
                     const response = await fetch(`${API_URL}/comparison-status/${requestId}`);
                     if (!response.ok) {
@@ -974,6 +979,7 @@
                     if (attempts > 10 && data.progress < 20) {
                         throw new Error('Processing is taking longer than expected');
                     }
+
                 } catch (error) {
                     console.error('Error polling results:', error);
                     await new Promise(resolve => setTimeout(resolve, delay));
