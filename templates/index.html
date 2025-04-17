@@ -1130,15 +1130,20 @@
                 
                 const data = await response.json();
                 if (data.status === 'success') {
-                    // Update both the history and the current result display
+                    // Update the history display
                     await fetchComparedVideos();
                     
-                    // Get the current result from the detection result div
-                    const resultText = document.querySelector('#detection-result .result-text').textContent;
-                    const confidenceText = document.querySelector('#detection-result .confidence-text').textContent;
+                    // Only try to update the main result display if those elements exist
+                    const resultElement = document.querySelector('#detection-result .result-text');
+                    const confidenceElement = document.querySelector('#detection-result .confidence-text');
                     
-                    // Update the main result display with the new feedback
-                    displayResult(resultText, confidenceText.split(' ')[0], feedback);
+                    if (resultElement && confidenceElement) {
+                        displayResult(
+                            resultElement.textContent,
+                            confidenceElement.textContent.split(' ')[0],
+                            feedback
+                        );
+                    }
                 }
             } catch (error) {
                 console.error('Error submitting feedback:', error);
