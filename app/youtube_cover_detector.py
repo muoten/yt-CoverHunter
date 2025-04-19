@@ -125,33 +125,37 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                     logger.error(f"Error in progress hook: {e}")
 
         ydl_opts = {
-            'format': 'bestaudio/best',
-            'quiet': False,
-            'no_warnings': True,
-            'logger': logger,
+            'socket_timeout': 5,          # Already set to 5s
+            'retries': 3,                # Already set to 3
+            'fragment_retries': 3,       # Already set to 3
+            'external_downloader': 'aria2c',  # Force using aria2c
+            'external_downloader_args': {
+                'aria2c': [
+                    '-x', '16',           # Increased from 8 to 16 concurrent connections
+                    '-j', '16',           # Increased from 8 to 16 parallel downloads
+                    '-s', '16',           # Increased from 8 to 16 splits
+                    '--max-overall-download-limit=5M',  # Increased from 2M to 5M
+                    '--min-split-size=1M',
+                    '--timeout=5',       
+                    '--max-tries=3',     
+                    '--connect-timeout=5',
+                    '--lowest-speed-limit=50K',  # Added minimum speed threshold
+                    '--max-connection-per-server=8',  # Added max connections per server
+                    '--max-concurrent-downloads=3',   # Added concurrent download limit
+                    '--auto-file-renaming=false',    # Prevent file naming issues
+                    '--allow-overwrite=true'         # Allow overwriting existing files
+                ]
+            },
+            'format': 'bestaudio/best',  # Explicitly specify format preference
+            'ignoreerrors': True,
+            'no_warnings': True,         # Reduce log noise
+            'quiet': True,               # Further reduce log noise
             'progress_hooks': [progress_hook],  # Add progress hook
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
             }],
             'outtmpl': f'{WAV_FOLDER}/{youtube_id}.%(ext)s',
-            'external_downloader': 'aria2c',
-            'external_downloader_args': {
-                'aria2c': [
-                    '-x', '8',           # Increased concurrent connections
-                    '-j', '8',           # Increased parallel downloads
-                    '-s', '8',           # Increased splits
-                    '--max-overall-download-limit=2M',  # Increased bandwidth limit
-                    '--min-split-size=1M',
-                    '--timeout=5',       # Matching socket_timeout
-                    '--max-tries=3',     # Matching retries
-                    '--connect-timeout=5'  # Added explicit connect timeout
-                ]
-            },
-            'socket_timeout': 5,          # Reduced from default 30s to 5s
-            'retries': 3,                # Reduced retries for faster failure
-            'fragment_retries': 3,       # Reduced fragment retries
-            'ignoreerrors': True
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
