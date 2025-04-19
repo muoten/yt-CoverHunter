@@ -136,6 +136,15 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
             }],
             'outtmpl': f'{WAV_FOLDER}/{youtube_id}.%(ext)s',
             'external_downloader': 'aria2c',
+            'external_downloader_args': {
+                'aria2c': [
+                    '-x', '4',  # Reduce from 8/16 to 4 connections
+                    '-j', '4',  # Reduce parallel downloads
+                    '-s', '4',  # Reduce file splits
+                    '--max-overall-download-limit=1M',  # Limit bandwidth
+                    '--min-split-size=1M'
+                ]
+            },
             'socket_timeout': 30,
             'retries': 10,
             'fragment_retries': 10,
