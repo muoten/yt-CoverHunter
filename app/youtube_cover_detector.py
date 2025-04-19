@@ -126,34 +126,36 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
 
         ydl_opts = {
             'format': 'bestaudio/best',
-            'socket_timeout': 20,
-            'retries': 8,
-            'fragment_retries': 8,
+            'socket_timeout': 30,
+            'retries': 10,
+            'fragment_retries': 10,
             'external_downloader': 'aria2c',
             'external_downloader_args': {
                 'aria2c': [
-                    # Balanced connection settings
-                    '-x', '3',              
-                    '-s', '3',              
+                    # More conservative connection settings
+                    '-x', '2',              
+                    '-s', '2',              
                     '--max-connection-per-server=2',
-                    # Conservative speed settings
-                    '--lowest-speed-limit=40K',
+                    # Much more lenient speed settings
+                    '--lowest-speed-limit=20K',
                     '--min-split-size=1M',
-                    # Balanced timeouts and retries
-                    '--timeout=20',
-                    '--connect-timeout=10',
-                    '--retry-wait=2',
-                    '--max-tries=8',
-                    # Resume settings
+                    # Increased timeouts and retries
+                    '--timeout=30',
+                    '--connect-timeout=15',
+                    '--retry-wait=3',
+                    '--max-tries=10',
+                    # Additional stability settings
                     '--always-resume=true',
                     '--max-resume-failure-tries=5',
-                    # Universal optimizations
+                    '--stream-piece-selector=inorder',
                     '--file-allocation=none',
-                    '--disk-cache=24M',
-                    '--console-log-level=warn',
-                    '--summary-interval=5',
-                    '--conditional-get=true',
-                    '--auto-file-renaming=false'
+                    '--disk-cache=16M',
+                    '--max-overall-download-limit=0',
+                    '--max-download-limit=0',
+                    '--piece-length=1M',
+                    '--enable-http-keep-alive=true',
+                    '--enable-http-pipelining=true',
+                    '--http-accept-gzip=true'
                 ]
             },
             'quiet': True,
