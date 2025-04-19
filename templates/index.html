@@ -861,6 +861,12 @@
             const video1 = document.getElementById('video1').value;
             const video2 = document.getElementById('video2').value;
             
+            // Check if URLs are the same
+            if (video1 === video2) {
+                updateProgress(0, "Error: Cannot compare a video with itself");
+                return;
+            }
+            
             try {
                 submitButton.disabled = true;
                 console.log('Making request to:', `${API_URL}/check-if-cover`);
