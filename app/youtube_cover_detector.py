@@ -125,31 +125,28 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                     logger.error(f"Error in progress hook: {e}")
 
         ydl_opts = {
-            'socket_timeout': 5,          # Already set to 5s
-            'retries': 3,                # Already set to 3
-            'fragment_retries': 3,       # Already set to 3
-            'external_downloader': 'aria2c',  # Force using aria2c
+            'format': 'bestaudio/best',  # Keep best audio quality
+            'socket_timeout': 10,
+            'retries': 5,
+            'fragment_retries': 5,
+            'external_downloader': 'aria2c',
             'external_downloader_args': {
                 'aria2c': [
-                    '-x', '16',           # Increased from 8 to 16 concurrent connections
-                    '-j', '16',           # Increased from 8 to 16 parallel downloads
-                    '-s', '16',           # Increased from 8 to 16 splits
-                    '--max-overall-download-limit=5M',  # Increased from 2M to 5M
-                    '--min-split-size=1M',
-                    '--timeout=5',       
-                    '--max-tries=3',     
-                    '--connect-timeout=5',
-                    '--lowest-speed-limit=50K',  # Added minimum speed threshold
-                    '--max-connection-per-server=8',  # Added max connections per server
-                    '--max-concurrent-downloads=3',   # Added concurrent download limit
-                    '--auto-file-renaming=false',    # Prevent file naming issues
-                    '--allow-overwrite=true'         # Allow overwriting existing files
+                    '-x', '4',            # Conservative connection count for VM
+                    '-s', '4',            # Match split count
+                    '--max-connection-per-server=2',
+                    '--lowest-speed-limit=100K',
+                    '--timeout=10',
+                    '--max-tries=5',
+                    '--retry-wait=1',
+                    '--always-resume=true',
+                    '--max-resume-failure-tries=5',
+                    '--file-allocation=none',
+                    '--disk-cache=32M'
                 ]
             },
-            'format': 'bestaudio/best',  # Explicitly specify format preference
-            'ignoreerrors': True,
-            'no_warnings': True,         # Reduce log noise
-            'quiet': True,               # Further reduce log noise
+            'quiet': True,
+            'no_warnings': True,
             'progress_hooks': [progress_hook],  # Add progress hook
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
