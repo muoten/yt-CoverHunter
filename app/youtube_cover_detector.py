@@ -138,16 +138,19 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
             'external_downloader': 'aria2c',
             'external_downloader_args': {
                 'aria2c': [
-                    '-x', '4',  # Reduce from 8/16 to 4 connections
-                    '-j', '4',  # Reduce parallel downloads
-                    '-s', '4',  # Reduce file splits
-                    '--max-overall-download-limit=1M',  # Limit bandwidth
-                    '--min-split-size=1M'
+                    '-x', '8',           # Increased concurrent connections
+                    '-j', '8',           # Increased parallel downloads
+                    '-s', '8',           # Increased splits
+                    '--max-overall-download-limit=2M',  # Increased bandwidth limit
+                    '--min-split-size=1M',
+                    '--timeout=5',       # Matching socket_timeout
+                    '--max-tries=3',     # Matching retries
+                    '--connect-timeout=5'  # Added explicit connect timeout
                 ]
             },
-            'socket_timeout': 30,
-            'retries': 10,
-            'fragment_retries': 10,
+            'socket_timeout': 5,          # Reduced from default 30s to 5s
+            'retries': 3,                # Reduced retries for faster failure
+            'fragment_retries': 3,       # Reduced fragment retries
             'ignoreerrors': True
         }
         
