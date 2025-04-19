@@ -125,24 +125,35 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                     logger.error(f"Error in progress hook: {e}")
 
         ydl_opts = {
-            'format': 'bestaudio/best',  # Keep best audio quality
-            'socket_timeout': 10,
-            'retries': 5,
-            'fragment_retries': 5,
+            'format': 'bestaudio/best',
+            'socket_timeout': 20,
+            'retries': 8,
+            'fragment_retries': 8,
             'external_downloader': 'aria2c',
             'external_downloader_args': {
                 'aria2c': [
-                    '-x', '4',            # Conservative connection count for VM
-                    '-s', '4',            # Match split count
+                    # Balanced connection settings
+                    '-x', '3',              
+                    '-s', '3',              
                     '--max-connection-per-server=2',
-                    '--lowest-speed-limit=100K',
-                    '--timeout=10',
-                    '--max-tries=5',
-                    '--retry-wait=1',
+                    # Conservative speed settings
+                    '--lowest-speed-limit=40K',
+                    '--min-split-size=1M',
+                    # Balanced timeouts and retries
+                    '--timeout=20',
+                    '--connect-timeout=10',
+                    '--retry-wait=2',
+                    '--max-tries=8',
+                    # Resume settings
                     '--always-resume=true',
                     '--max-resume-failure-tries=5',
+                    # Universal optimizations
                     '--file-allocation=none',
-                    '--disk-cache=32M'
+                    '--disk-cache=24M',
+                    '--console-log-level=warn',
+                    '--summary-interval=5',
+                    '--conditional-get=true',
+                    '--auto-file-renaming=false'
                 ]
             },
             'quiet': True,
