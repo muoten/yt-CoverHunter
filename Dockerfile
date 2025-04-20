@@ -32,7 +32,9 @@ ENV CHROME_BIN=/usr/bin/chromium \
     PYTHONIOENCODING=utf-8 \
     PYTHONBREAKPOINT=0 \
     PYTHONASYNCIODEBUG=1 \
-    CSV_FILE=/data/compared_videos.csv
+    CSV_FILE=/data/compared_videos.csv \
+    PYTHONMALLOC=malloc \
+    MALLOC_TRIM_THRESHOLD_=65536
 
 # Copy requirements and install dependencies - this layer can be cached if requirements don't change
 COPY requirements.txt .
