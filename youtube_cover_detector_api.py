@@ -610,15 +610,3 @@ async def cleanup_request(request: VideoRequest):
 async def get_avg_time():
     avg_time = get_average_processing_time()
     return {"avg_time": avg_time}
-
-if __name__ == '__main__':
-    import uvicorn
-    import os
-    
-    uvicorn.run(
-        app,
-        host='0.0.0.0',
-        port=int(os.getenv('PORT', 8080)),
-        workers=int(os.getenv('WORKERS', 1)),
-        log_level=os.getenv('LOG_LEVEL', 'info')
-    ) 

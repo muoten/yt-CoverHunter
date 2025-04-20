@@ -31,10 +31,10 @@ primary_region = 'mad'
     handlers = ["tls", "http"]
 
 [[vm]]
-  memory = '1gb'
+  memory = '512mb'
   cpu_kind = 'shared'
   cpus = 1
-  memory_mb = 2048
+  memory_mb = 512
 
 [mounts]
 source="yt_cover_data"
