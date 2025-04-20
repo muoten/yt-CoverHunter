@@ -27,6 +27,7 @@ import shutil
 import glob
 import psutil
 from datetime import datetime
+from app.utils.memory_logger import log_detailed_memory
 
 # Initialize queue and tasks at module level
 comparison_queue = asyncio.Queue()
@@ -452,6 +453,7 @@ Shared: {mem.shared / 1024 / 1024:.2f}MB
 Time: {datetime.now().strftime('%H:%M:%S')}
 ========================
 """)
+    log_detailed_memory()
 
 class CoverDetector:
     def __init__(self):

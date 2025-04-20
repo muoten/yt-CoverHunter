@@ -47,6 +47,8 @@ from app.youtube_cover_detector import (
 import math
 from multiprocessing import Process, Queue, Manager
 from app.background_worker import start_background_worker
+import psutil
+from app.utils.memory_logger import log_detailed_memory
 
 #First version that works! Though it takes more than 3 minutes to run in fly.dev free tier
 YT_DLP_USE_COOKIES = os.getenv('YT_DLP_USE_COOKIES', False)
@@ -610,3 +612,7 @@ async def cleanup_request(request: VideoRequest):
 async def get_avg_time():
     avg_time = get_average_processing_time()
     return {"avg_time": avg_time}
+
+# Add this right before your CoverDetector initialization
+# Where you currently log "Memory Usage Before CoverDetector init"
+log_detailed_memory()
