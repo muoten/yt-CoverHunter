@@ -81,5 +81,5 @@ COPY data/ /code/data/
 VOLUME /data
 
 # Run the application
-CMD ["sh", "-c", "echo 'Starting container...' && PYTHONUNBUFFERED=1 uvicorn youtube_cover_detector_api:app --host $HOST --port $PORT --workers 4 --log-level debug --reload --access-log --use-colors"]
+CMD ["sh", "-c", "echo 'Starting container...' && PYTHONUNBUFFERED=1 uvicorn youtube_cover_detector_api:app --host $HOST --port $PORT --workers 1 --log-level debug --access-log --use-colors"]
 EXPOSE 8080

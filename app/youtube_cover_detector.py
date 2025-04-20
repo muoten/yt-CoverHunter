@@ -613,11 +613,6 @@ def get_average_processing_time() -> float:
         logger.info("Using default timeout of 50 seconds due to error")
         return 50  # Default on error
 
-# Ensure the FastAPI app runs
-if __name__ == '__main__':
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8080)
-
 # Make sure the function is exported
 __all__ = [
     'extract_video_id',
