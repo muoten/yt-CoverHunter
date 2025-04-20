@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y \
     aria2 \
     git-lfs \
     wget \
+    gcc python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Verify ffmpeg installation
@@ -36,6 +37,14 @@ ENV CHROME_BIN=/usr/bin/chromium \
 # Copy requirements and install dependencies - this layer can be cached if requirements don't change
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Add build dependencies before pip install
+RUN apt-get update && \
+    apt-get install -y gcc python3-dev && \
+    pip install psutil==5.9.8 && \
+    # Clean up to reduce image size
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Create necessary directories
 RUN mkdir -p /code/pretrain_model/checkpoints \

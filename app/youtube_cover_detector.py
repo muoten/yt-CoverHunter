@@ -25,6 +25,8 @@ import io
 from typing import Dict, Any
 import shutil
 import glob
+import psutil
+from datetime import datetime
 
 # Initialize queue and tasks at module level
 comparison_queue = asyncio.Queue()
@@ -437,13 +439,33 @@ def cleanup_temp_files(url1: str, url2: str):
             except Exception as e:
                 logger.error(f"Error cleaning up {wav_path}: {e}")
 
+def log_memory(tag: str = ""):
+    """Log detailed memory usage with an optional tag"""
+    process = psutil.Process(os.getpid())
+    mem = process.memory_info()
+    
+    logger.info(f"""
+=== Memory Usage {tag} ===
+RSS (Actual memory used): {mem.rss / 1024 / 1024:.2f}MB
+VMS (Virtual memory): {mem.vms / 1024 / 1024:.2f}MB
+Shared: {mem.shared / 1024 / 1024:.2f}MB
+Time: {datetime.now().strftime('%H:%M:%S')}
+========================
+""")
+
 class CoverDetector:
     def __init__(self):
-        # Initialize model path from config
+        log_memory("Before CoverDetector init")
+        
+        # Model initialization
         self.model_path = os.path.join(config['MODEL_FOLDER'], 'checkpoints/g_00000043')
+        log_memory("Before model load")
+        
         if not os.path.exists(self.model_path):
             raise FileNotFoundError(f"Model file not found at {self.model_path}")
         logger.info(f"Using model at {self.model_path}")
+        
+        log_memory("After model load")
         
         self.threshold = config['THRESHOLD']
         self.wav_folder = config['WAV_FOLDER']
@@ -454,6 +476,7 @@ class CoverDetector:
         self.process_only_first_n_seconds = config['PROCESS_ONLY_FIRST_N_SECONDS']
         
     async def compare_videos(self, url1: str, url2: str, request: Dict = None) -> Dict[str, Any]:
+        log_memory("Start comparison")
         try:
             start_time = time.time()
             
@@ -499,7 +522,9 @@ class CoverDetector:
                 active_tasks[request['id']] = request
             
             # Generate embeddings
+            log_memory("Before embeddings")
             embeddings = _generate_embeddings_from_filepaths(wav_path1, wav_path2)
+            log_memory("After embeddings")
             keys = list(embeddings.keys())
             embedding1 = embeddings[keys[0]]
             embedding2 = embeddings[keys[1]]
@@ -510,7 +535,10 @@ class CoverDetector:
                 active_tasks[request['id']] = request
             
             # Calculate distance and determine if it's a cover
+            log_memory("Before distance calculation")
             distance = _cosine_distance(embedding1, embedding2)
+            log_memory("End comparison")
+            
             is_cover = distance < self.threshold
             
             result = "Cover" if is_cover else "Not Cover"
@@ -529,6 +557,9 @@ class CoverDetector:
         except Exception as e:
             logger.error(f"Error comparing videos: {e}")
             raise
+        finally:
+            # Cleanup
+            log_memory("After cleanup")
 
     def cleanup_temp_files(self, url1: str, url2: str):
         for url in [url1, url2]:

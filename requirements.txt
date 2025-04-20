@@ -9,4 +9,5 @@ uvicorn==0.34.0
 yt-dlp==2025.03.31
 selenium==4.15.0
 tqdm
+psutil==5.9.8
 
