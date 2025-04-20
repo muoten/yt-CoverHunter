@@ -20,7 +20,7 @@ primary_region = 'mad'
 [[vm]]
   cpu_kind = "shared"
   cpus = 1
-  memory = '768mb'
+  memory = '1024mb'
 
 [mounts]
 source="yt_cover_data"
