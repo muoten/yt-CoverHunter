@@ -34,7 +34,12 @@ ENV CHROME_BIN=/usr/bin/chromium \
     PYTHONASYNCIODEBUG=1 \
     CSV_FILE=/data/compared_videos.csv \
     PYTHONMALLOC=malloc \
-    MALLOC_TRIM_THRESHOLD_=65536
+    MALLOC_TRIM_THRESHOLD_=16384 \
+    MALLOC_MMAP_THRESHOLD_=16384 \
+    PYTHONVM_ALLOC_POLICY=0 \
+    MMAP_THRESHOLD=16384 \
+    MALLOC_ARENA_MAX=2 \
+    MALLOC_TOP_PAD_=0
 
 # Copy requirements and install dependencies - this layer can be cached if requirements don't change
 COPY requirements.txt .
