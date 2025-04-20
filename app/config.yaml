@@ -13,3 +13,4 @@ MAX_CONCURRENT_REQUESTS: 3  # Limit concurrent processing
 SCORES_CSV_FILE_BACKUP: /data/compared_videos.csv.backup
 VECTORS_CSV_FILE_BACKUP: /data/vectors.csv.backup
 BACKUP_INTERVAL: 3600  # Backup interval in seconds
+LOG_MEMORY: False
