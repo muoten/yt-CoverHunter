@@ -27,4 +27,6 @@ def log_detailed_memory():
     print(f"\nTotal mapped memory: {total_mapped:.2f}MB")
     print(f"Difference from VMS: {(vms_total - total_mapped):.2f}MB")
     
+    import torch
+    print(torch.__version__)
     
