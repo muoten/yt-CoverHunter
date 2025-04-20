@@ -126,38 +126,35 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
 
         ydl_opts = {
             'format': 'bestaudio/best',
-            'socket_timeout': 30,
-            'retries': 10,
-            'fragment_retries': 10,
             'external_downloader': 'aria2c',
             'external_downloader_args': {
                 'aria2c': [
-                    # More conservative connection settings
-                    '-x', '2',              
-                    '-s', '2',              
-                    '--max-connection-per-server=2',
-                    # Much more lenient speed settings
-                    '--lowest-speed-limit=20K',
-                    '--min-split-size=1M',
-                    # Increased timeouts and retries
-                    '--timeout=30',
-                    '--connect-timeout=15',
-                    '--retry-wait=3',
-                    '--max-tries=10',
-                    # Additional stability settings
-                    '--always-resume=true',
-                    '--max-resume-failure-tries=5',
-                    '--stream-piece-selector=inorder',
-                    '--file-allocation=none',
-                    '--disk-cache=16M',
-                    '--max-overall-download-limit=0',
-                    '--max-download-limit=0',
-                    '--piece-length=1M',
+                    # Increase concurrent connections
+                    '-x', '4',              
+                    '-s', '4',              
+                    '--max-connection-per-server=4',
+                    
+                    # Fixed min-split-size to valid range
+                    '--min-split-size=1M',  # Minimum allowed value
+                    '--timeout=10',
+                    '--connect-timeout=5',
+                    '--retry-wait=1',
+                    '--lowest-speed-limit=100K',
+                    
+                    # Keep the good settings
                     '--enable-http-keep-alive=true',
                     '--enable-http-pipelining=true',
-                    '--http-accept-gzip=true'
+                    '--http-accept-gzip=true',
+                    
+                    # Add these for better performance
+                    '--optimize-concurrent-downloads=true',
+                    '--conditional-get=true',
+                    '--auto-file-renaming=false',
+                    '--allow-overwrite=true'
                 ]
             },
+            'socket_timeout': 10,
+            'retries': 5,
             'quiet': True,
             'no_warnings': True,
             'progress_hooks': [progress_hook],  # Add progress hook
