@@ -18,7 +18,7 @@ primary_region = 'mad'
 
 
 [[vm]]
-  size = "shared-cpu-2x"
+  size = "shared-cpu-1x"
   memory = '1024mb'
 
 [mounts]
