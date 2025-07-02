@@ -1,7 +1,7 @@
 WAV_FOLDER: /tmp/youtube_cover_detector_api_wav
 MODEL_FOLDER: /code/pretrain_model
 COVERHUNTER_FOLDER: /code/
-THRESHOLD: 0.3
+THRESHOLD: 0.13
 YT_DLP_USE_COOKIES: False
 SCORES_CSV_FILE: /data/compared_videos.csv
 VECTORS_CSV_FILE: /data/vectors.csv
