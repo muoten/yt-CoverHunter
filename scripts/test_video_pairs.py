@@ -7,6 +7,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import time
 import os
+from datetime import datetime, timedelta
 
 def read_video_urls(csv_file):
     """Read video URLs from CSV file"""
@@ -18,12 +19,44 @@ def read_video_urls(csv_file):
                 urls.append(row[0].strip())
     return urls
 
-def generate_video_pairs(urls):
-    """Generate all distinct pairs of video URLs"""
+def read_already_compared_pairs(backup_file):
+    """Read already compared video pairs from backup CSV file"""
+    compared_pairs = set()
+    if not os.path.exists(backup_file):
+        print(f"Backup file {backup_file} not found, will test all pairs")
+        return compared_pairs
+    
+    try:
+        with open(backup_file, 'r') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                # Store both directions (url1,url2) and (url2,url1) since order doesn't matter
+                url1 = row['url1'].strip()
+                url2 = row['url2'].strip()
+                compared_pairs.add((url1, url2))
+                compared_pairs.add((url2, url1))  # Add reverse pair too
+        print(f"Found {len(compared_pairs)//2} already compared pairs in {backup_file}")
+    except Exception as e:
+        print(f"Error reading backup file: {e}")
+    
+    return compared_pairs
+
+def generate_video_pairs(urls, already_compared_pairs):
+    """Generate all distinct pairs of video URLs, excluding already compared ones"""
     pairs = []
     for url1, url2 in itertools.combinations(urls, 2):
-        pairs.append((url1, url2))
+        # Check if this pair (in either direction) has already been compared
+        if (url1, url2) not in already_compared_pairs and (url2, url1) not in already_compared_pairs:
+            pairs.append((url1, url2))
+        else:
+            print(f"Skipping already compared pair: {url1} vs {url2}")
     return pairs
+
+def calculate_estimated_completion_time(num_pairs, avg_time_per_test=30):
+    """Calculate estimated completion time"""
+    total_seconds = num_pairs * avg_time_per_test
+    estimated_completion = datetime.now() + timedelta(seconds=total_seconds)
+    return estimated_completion.strftime("%H:%M:%S"), total_seconds
 
 def test_video_pair(driver, video1_url, video2_url, pair_index, total_pairs):
     """Test a single pair of videos"""
@@ -100,7 +133,7 @@ def test_video_pair(driver, video1_url, video2_url, pair_index, total_pairs):
         
         # Wait for response with frequent checks
         print("Waiting for response...")
-        max_wait_time = 20  # Maximum 20 iterations
+        max_wait_time = 10  # Maximum 10 iterations
         check_interval = 2   # Check every 2 seconds
         waited_time = 0
         
@@ -199,13 +232,22 @@ def test_all_video_pairs():
     urls = read_video_urls(csv_file)
     print(f"Found {len(urls)} video URLs: {urls}")
     
-    # Generate all distinct pairs
-    pairs = generate_video_pairs(urls)
+    # Read already compared pairs from backup file
+    backup_file = "backup_compared_videos_20250712.csv"
+    already_compared_pairs = read_already_compared_pairs(backup_file)
+    
+    # Generate all distinct pairs, excluding already compared ones
+    pairs = generate_video_pairs(urls, already_compared_pairs)
     print(f"Generated {len(pairs)} distinct pairs to test")
     
     if not pairs:
         print("No pairs to test!")
         return
+    
+    # Calculate estimated completion time
+    estimated_time, total_seconds = calculate_estimated_completion_time(len(pairs))
+    print(f"Estimated completion time: {estimated_time} (assuming 30 seconds per test)")
+    print(f"Total estimated time: {total_seconds//60} minutes {total_seconds%60} seconds")
     
     # Configure Chrome options
     chrome_options = Options()
@@ -220,11 +262,22 @@ def test_all_video_pairs():
     try:
         successful_tests = 0
         failed_tests = 0
+        start_time = datetime.now()
         
         for i, (url1, url2) in enumerate(pairs, 1):
             print(f"\n{'='*60}")
             print(f"PROGRESS: {i}/{len(pairs)} pairs tested")
             print(f"Successful: {successful_tests}, Failed: {failed_tests}")
+            
+            # Calculate remaining time based on actual progress
+            elapsed_time = (datetime.now() - start_time).total_seconds()
+            if i > 1:
+                avg_time_per_completed = elapsed_time / (i - 1)
+                remaining_pairs = len(pairs) - i + 1
+                remaining_seconds = remaining_pairs * avg_time_per_completed
+                estimated_completion = datetime.now() + timedelta(seconds=remaining_seconds)
+                print(f"Estimated completion: {estimated_completion.strftime('%H:%M:%S')}")
+            
             print(f"{'='*60}")
             
             success = test_video_pair(driver, url1, url2, i, len(pairs))
@@ -241,12 +294,18 @@ def test_all_video_pairs():
                 print("Waiting 2 seconds before next test...")
                 time.sleep(2)
         
+        # Calculate final statistics
+        total_time = (datetime.now() - start_time).total_seconds()
+        avg_time_per_test = total_time / len(pairs) if len(pairs) > 0 else 0
+        
         print(f"\n{'='*60}")
         print("FINAL RESULTS:")
         print(f"Total pairs tested: {len(pairs)}")
         print(f"Successful: {successful_tests}")
         print(f"Failed: {failed_tests}")
         print(f"Success rate: {(successful_tests/len(pairs)*100):.1f}%")
+        print(f"Total time: {total_time//60:.0f} minutes {total_time%60:.0f} seconds")
+        print(f"Average time per test: {avg_time_per_test:.1f} seconds")
         print(f"{'='*60}")
         
     except Exception as e:
