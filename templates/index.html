@@ -949,7 +949,7 @@
             let delay = 3000; // Start with 3 seconds
             const MAX_DELAY = 10000; // Max 10 seconds
             const BACKOFF_FACTOR = 1.5; // Increase delay by 50% each time
-            const REQUEST_TIMEOUT = 60; // Server-side timeout matching client MAX_TOTAL_TIME
+            const REQUEST_TIMEOUT = 90; // Server-side timeout matching client MAX_TOTAL_TIME
             let startTime = Date.now();
             while (attempts < maxAttempts) {
                 total_time = Date.now() - startTime;

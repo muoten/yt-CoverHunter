@@ -7,7 +7,7 @@ SCORES_CSV_FILE: /data/compared_videos.csv
 VECTORS_CSV_FILE: /data/vectors.csv
 PROCESS_ONLY_FIRST_N_SECONDS: -1  # This means processing entire audio files
 STATIC_FOLDER: /code/static
-REQUEST_TIMEOUT: 60  # Server-side timeout matching client MAX_TOTAL_TIME
+REQUEST_TIMEOUT: 90  # Server-side timeout matching client MAX_TOTAL_TIME
 CLEANUP_ON_TIMEOUT: true  # Ensure resources are cleaned up on timeout
 MAX_CONCURRENT_REQUESTS: 3  # Limit concurrent processing
 SCORES_CSV_FILE_BACKUP: /data/compared_videos.csv.backup
