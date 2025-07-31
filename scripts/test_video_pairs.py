@@ -1,13 +1,31 @@
+import time
 import csv
 import itertools
+import gc  # Garbage collection
+import os
+from datetime import datetime, timedelta
+import signal
+import sys
 from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-import time
-import os
-from datetime import datetime, timedelta
+from selenium.webdriver.chrome.options import Options
+from selenium.common.exceptions import NoSuchElementException, TimeoutException, SessionNotCreatedException, StaleElementReferenceException
+from selenium.common.exceptions import TimeoutException
+import psutil  # For system resource monitoring
+
+# Global flag to track if we're stuck
+stuck_flag = False
+
+def signal_handler(signum, frame):
+    global stuck_flag
+    print(f"\n⚠️  Signal {signum} received - script may be stuck!")
+    print(f"⚠️  Signal triggered at: {datetime.now().strftime('%H:%M:%S')}")
+    stuck_flag = True
+
+# Set up signal handlers for stuck detection
+signal.signal(signal.SIGALRM, signal_handler)
 
 def read_video_urls(csv_file):
     """Read video URLs from CSV file"""
@@ -60,6 +78,12 @@ def calculate_estimated_completion_time(num_pairs, avg_time_per_test=30):
 
 def test_video_pair(driver, video1_url, video2_url, pair_index, total_pairs):
     """Test a single pair of videos"""
+    global stuck_flag
+    
+    # Reset stuck flag for this test and cancel any existing alarm
+    stuck_flag = False
+    signal.alarm(0)  # Cancel any existing alarm
+    
     print(f"\n{'='*60}")
     print(f"Testing pair {pair_index}/{total_pairs}")
     print(f"Video 1: {video1_url}")
@@ -70,241 +94,460 @@ def test_video_pair(driver, video1_url, video2_url, pair_index, total_pairs):
         # Navigate to the website
         driver.get("https://yt-coverhunter.fly.dev/")
         
-        # Wait for the page to load
-        wait = WebDriverWait(driver, 10)
+        # Wait for the page to load with timeout
+        wait = WebDriverWait(driver, 30)  # 30 second timeout
         
-        # Find the input fields
+        # Check if the page loaded successfully
+        title = driver.title
+        print(f"Page title: {title}")
+        
+        # Look for the main elements
         try:
-            video1_input = driver.find_element(By.ID, "video1")
-            video2_input = driver.find_element(By.ID, "video2")
-            print("Found input fields by ID")
-        except:
-            # Fallback to finding by CSS selector
-            video_inputs = driver.find_elements(By.CSS_SELECTOR, "input[type='text']")
-            if len(video_inputs) >= 2:
-                video1_input = video_inputs[0]
-                video2_input = video_inputs[1]
-                print("Found input fields by CSS selector")
-            else:
-                print("Could not find video URL input fields")
-                return False
-        
-        # Find the compare button
-        compare_button = driver.find_element(By.XPATH, "//button[contains(text(), 'Compare videos') or contains(text(), 'Completed')]")
-        
-        # Check if button already says "Completed!" (videos already compared)
-        button_text = compare_button.text.strip()
-        if "Completed" in button_text:
-            print(f"Videos already compared! Button says: '{button_text}'")
-            return True
-        
-        # Clear and enter URL 1
-        print(f"Entering URL 1: {video1_url}")
-        video1_input.clear()
-        time.sleep(0.5)
-        
-        # Use JavaScript to set the value and trigger input event
-        driver.execute_script("""
-            arguments[0].value = arguments[1];
-            arguments[0].dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-        """, video1_input, video1_url)
-        print(f"Input 1 value: '{video1_input.get_attribute('value')}'")
-        
-        # Clear and enter URL 2
-        print(f"Entering URL 2: {video2_url}")
-        video2_input.clear()
-        time.sleep(0.5)
-        
-        # Use JavaScript to set the value and trigger input event
-        driver.execute_script("""
-            arguments[0].value = arguments[1];
-            arguments[0].dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-        """, video2_input, video2_url)
-        print(f"Input 2 value: '{video2_input.get_attribute('value')}'")
-        
-        # Check if URLs are the same (shouldn't happen with our pairs, but good to check)
-        if video1_input.get_attribute('value') == video2_input.get_attribute('value'):
-            print("ERROR: Both inputs have the same value!")
-            return False
-        
-        # Click the compare button
-        compare_button.click()
-        print("Clicked compare button")
-        
-        # Wait for response with frequent checks
-        print("Waiting for response...")
-        max_wait_time = 10  # Maximum 10 iterations
-        check_interval = 2   # Check every 2 seconds
-        waited_time = 0
-        
-        while waited_time < max_wait_time:
-            time.sleep(check_interval)
-            waited_time += check_interval
-            print(f"Waited {waited_time}s, checking for result...")
+            # Check for the main heading
+            heading = wait.until(EC.presence_of_element_located((By.TAG_NAME, "h1")))
+            print(f"Main heading: {heading.text}")
             
+            # Look for input fields
+            input_fields = driver.find_elements(By.TAG_NAME, "input")
+            print(f"Found {len(input_fields)} input fields")
+            
+            # Look for the compare button
+            compare_button = driver.find_element(By.XPATH, "//button[contains(text(), 'Compare videos') or contains(text(), 'Completed')]")
+            print(f"Compare button found: {compare_button.text}")
+            
+            # Check if button already says "Completed!" (videos already compared)
+            button_text = compare_button.text.strip()
+            if "Completed" in button_text:
+                print(f"Videos already compared! Button says: '{button_text}'")
+                return True
+            
+            # Find the specific video URL inputs by ID
             try:
-                # Look for any error messages (only non-empty ones)
-                error_elements = driver.find_elements(By.XPATH, "//*[contains(text(), 'error') or contains(text(), 'Error') or contains(text(), 'failed') or contains(text(), 'Failed')]")
-                actual_errors = []
-                for error in error_elements:
-                    if error.text.strip():  # Only count non-empty error messages
-                        actual_errors.append(error.text.strip())
+                video1_input = driver.find_element(By.ID, "video1")
+                video2_input = driver.find_element(By.ID, "video2")
+                print("Found input fields by ID")
+            except:
+                # Fallback to finding by CSS selector
+                video_inputs = driver.find_elements(By.CSS_SELECTOR, "input[type='text']")
+                if len(video_inputs) >= 2:
+                    video1_input = video_inputs[0]
+                    video2_input = video_inputs[1]
+                    print("Found input fields by CSS selector")
+                else:
+                    print("Could not find video URL input fields")
+                    return False
+            
+            # Check initial values
+            initial_value1 = driver.execute_script("return arguments[0].value;", video1_input)
+            initial_value2 = driver.execute_script("return arguments[0].value;", video2_input)
+            print(f"Initial Input 1 value: '{initial_value1}'")
+            print(f"Initial Input 2 value: '{initial_value2}'")
+            
+            # Enter test URLs with more careful approach
+            test_url1 = video1_url
+            test_url2 = video2_url
+            
+            # Clear and enter URL 1 with debugging
+            print(f"\nEntering URL 1: {test_url1}")
+            video1_input.clear()
+            after_clear1 = driver.execute_script("return arguments[0].value;", video1_input)
+            print(f"After clear - Input 1 value: '{after_clear1}'")
+            
+            # Use JavaScript to set the value and trigger input event
+            driver.execute_script("""
+                arguments[0].value = arguments[1];
+                arguments[0].dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+            """, video1_input, test_url1)
+            after_set1 = driver.execute_script("return arguments[0].value;", video1_input)
+            print(f"After JavaScript set - Input 1 value: '{after_set1}'")
+            
+            # Clear and enter URL 2
+            print(f"\nEntering URL 2: {test_url2}")
+            video2_input.clear()
+            after_clear2 = driver.execute_script("return arguments[0].value;", video2_input)
+            print(f"After clear - Input 2 value: '{after_clear2}'")
+            
+            # Use JavaScript to set the value and trigger input event
+            driver.execute_script("""
+                arguments[0].value = arguments[1];
+                arguments[0].dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+            """, video2_input, test_url2)
+            after_set2 = driver.execute_script("return arguments[0].value;", video2_input)
+            print(f"After JavaScript set - Input 2 value: '{after_set2}'")
+            
+            # Check values before clicking
+            print(f"\nBefore clicking - Input 1 value: '{after_set1}'")
+            print(f"Before clicking - Input 2 value: '{after_set2}'")
+            
+            # Click the compare button
+            compare_button.click()
+            print("Clicked compare button")
+            print(f"Current URL: {driver.current_url}")
+            
+            # Wait for response with frequent checks
+            print("Waiting for response...")
+            max_wait_time = 120  # Maximum 2 minutes (120 seconds) for completion
+            check_interval = 5   # Check every 5 seconds
+            start_wait_time = time.time()
+            last_check_time = start_wait_time
+            
+            # Set up a 180-second alarm for stuck detection (no progress) - ONLY NOW
+            signal.alarm(180)
+            
+            while True:
+                # Check if we're stuck globally
+                if stuck_flag:
+                    actual_waited = time.time() - start_wait_time
+                    print(f"⚠️  Global stuck detection triggered after {actual_waited:.0f} seconds!")
+                    signal.alarm(0)  # Cancel alarm
+                    return "busy"
                 
-                if actual_errors:
-                    print("Error messages found:")
-                    for error in actual_errors:
-                        print(f"  - {error}")
+                current_time = time.time()
+                waited_time = current_time - start_wait_time
+                
+                if waited_time >= max_wait_time:
+                    print(f"Timeout after {waited_time:.0f} seconds (treating as busy)")
+                    signal.alarm(0)  # Cancel alarm
+                    return "busy"
+                
+                # Check if we're stuck (no progress for too long)
+                if current_time - last_check_time > 30:  # If no check for 30 seconds, we're stuck
+                    print(f"Stuck for {current_time - last_check_time:.0f} seconds, refreshing page...")
+                    try:
+                        driver.refresh()
+                        time.sleep(3)
+                        start_wait_time = time.time()  # Reset timer
+                        last_check_time = time.time()
+                        signal.alarm(180)  # Reset alarm
+                        continue
+                    except Exception as e:
+                        print(f"Failed to refresh page: {e}")
+                        signal.alarm(0)  # Cancel alarm
+                        return "busy"
+                
+                # Sleep for the check interval
+                time.sleep(check_interval)
+                last_check_time = time.time()
+                
+                # Calculate actual waited time after sleep
+                actual_waited = time.time() - start_wait_time
+                print(f"Waited {actual_waited:.0f}s, checking for result...")
+                
+                # Check if page is still responsive
+                try:
+                    driver.current_url
+                except Exception as e:
+                    print(f"Page became unresponsive: {e}")
+                    signal.alarm(0)  # Cancel alarm
                     return False
                 
-                # Look for success/result messages
                 try:
-                    progress_text = driver.find_element(By.CSS_SELECTOR, "div#progress-text.progress-status")
-                    print(progress_text.text.strip())
-                    if progress_text.text.strip() and "complete" in progress_text.text.lower():
-                        print(f"Success/Result messages found: {progress_text.text.strip()}")
-                        return True
-                except:
-                    # Fallback to general search
-                    success_elements = driver.find_elements(By.XPATH, "//*[contains(text(), 'complete') or contains(text(), 'Complete') or contains(text(), 'complete!') or contains(text(), 'Complete!')]")
-                    actual_successes = []
-                    for success in success_elements:
-                        if success.text.strip():  # Only count non-empty success messages
-                            actual_successes.append(success.text.strip())
-                    
-                    if actual_successes:
+                    # Check for success messages
+                    success_elements = driver.find_elements(By.XPATH, "//div[contains(text(), 'Complete') or contains(text(), 'complete')]")
+                    if success_elements:
                         print("Success/Result messages found:")
-                        for success in actual_successes:
-                            print(f"  - {success}")
+                        for elem in success_elements:
+                            print(f"  - {elem.text}")
                         return True
-                
-                # Look for loading indicators
-                loading_elements = driver.find_elements(By.XPATH, "//*[contains(text(), 'loading') or contains(text(), 'processing') or contains(text(), 'Loading')]")
-                actual_loadings = []
-                for loading in loading_elements:
-                    if loading.text.strip():  # Only count non-empty loading messages
-                        actual_loadings.append(loading.text.strip())
-                
-                if actual_loadings:
-                    print("Still loading...")
-                    print("Loading messages:")
-                    for loading in actual_loadings:
-                        print(f"  - {loading}")
-                    continue  # Keep waiting
-                
-                # Check for any text that might indicate completion
-                all_text_elements = driver.find_elements(By.XPATH, "//*[text()]")
-                relevant_texts = []
-                for elem in all_text_elements:
-                    text = elem.text.strip()
-                    #print(text)
-                    if text and any(keyword in text.lower() for keyword in ['complete', 'complete!']):
-                        relevant_texts.append(text)
-                
-                if relevant_texts:
-                    print("Relevant text found:")
-                    for text in relevant_texts:
-                        print(f"  - {text}")
-                    return True
-                
-                # If no clear indicators, continue waiting
-                print("No clear result yet, continuing to wait...")
-                
-            except Exception as e:
-                print(f"Error checking for responses: {e}")
-                continue
-        
-        print(f"Timeout after {max_wait_time} seconds")
-        return False
+                    
+                    # Check for error messages
+                    error_elements = driver.find_elements(By.XPATH, "//div[contains(text(), 'error') or contains(text(), 'Error') or contains(text(), 'failed') or contains(text(), 'Failed')]")
+                    if error_elements:
+                        print("Error messages found:")
+                        for elem in error_elements:
+                            if elem.text.strip():  # Only print non-empty error messages
+                                print(f"  - {elem.text}")
+                        return False
+                    
+                    # Check for busy message (but only after waiting at least 30 seconds)
+                    if actual_waited > 30:
+                        busy_elements = driver.find_elements(By.XPATH, "//div[contains(text(), 'busy') or contains(text(), 'Busy')]")
+                        if busy_elements:
+                            print("System is busy. Please try again in a few minutes.")
+                            return "busy"
+                    
+                    # Check for progress messages (like "Processing audio...")
+                    progress_elements = driver.find_elements(By.XPATH, "//div[contains(text(), 'Processing') or contains(text(), 'Downloading') or contains(text(), 'Est.')]")
+                    if progress_elements:
+                        progress_text = progress_elements[0].text if progress_elements else ""
+                        print(f"Progress: {progress_text}")
+                    
+                    # If we've been waiting for more than 120 seconds with no clear result, treat as busy
+                    if actual_waited > 120:
+                        print(f"No clear result after {actual_waited:.0f} seconds, treating as busy")
+                        return "busy"
+                        
+                except Exception as e:
+                    print(f"Error checking page elements: {e}")
+                    # If we can't even check elements, the page might be broken
+                    if actual_waited > 30:
+                        print("Page seems broken, treating as busy")
+                        signal.alarm(0)  # Cancel alarm
+                        return "busy"
+            
+            print(f"Timeout after {max_wait_time} seconds (treating as busy)")
+            signal.alarm(0)  # Cancel alarm
+            return "busy"
+            
+        except Exception as e:
+            print(f"Error interacting with page elements: {e}")
+            return False
             
     except Exception as e:
         print(f"Error testing pair: {e}")
         return False
 
+def clear_browser_data(driver):
+    """Clear browser cache and cookies to reduce memory usage"""
+    try:
+        driver.delete_all_cookies()
+        driver.execute_script("window.localStorage.clear();")
+        driver.execute_script("window.sessionStorage.clear();")
+        print("🧹 Browser cache and cookies cleared")
+    except Exception as e:
+        print(f"Could not clear browser data: {e}")
+
+def check_system_resources():
+    """Check if system resources are available"""
+    cpu_percent = psutil.cpu_percent(interval=1)
+    memory_percent = psutil.virtual_memory().percent
+    
+    print(f"System resources - CPU: {cpu_percent:.1f}%, Memory: {memory_percent:.1f}%")
+    
+    # If system is overloaded, wait a bit
+    if cpu_percent > 90 or memory_percent > 90:
+        print("⚠️  System overloaded, waiting 30 seconds...")
+        time.sleep(30)
+        return False
+    return True
+
+def check_memory_usage():
+    """Check current memory usage and return True if it's getting high"""
+    process = psutil.Process()
+    memory_mb = process.memory_info().rss / 1024 / 1024
+    print(f"Python process memory: {memory_mb:.1f} MB")
+    
+    # If memory usage is high, suggest restart
+    if memory_mb > 500:  # 500 MB threshold
+        print("⚠️  High memory usage detected")
+        return True
+    return False
+
 def test_all_video_pairs():
     """Test all distinct pairs of videos from the CSV file"""
     
-    # Read video URLs from CSV
+    # Configuration for same-machine optimization
+    BATCH_SIZE = 5  # Process only 5 tests at a time
+    BATCH_DELAY = 60  # Wait 1 minute between batches
+    
+    # Read video URLs and already compared pairs
     csv_file = "data/videos_to_test.csv"
+    backup_file = "backup_compared_videos.csv"
     if not os.path.exists(csv_file):
         print(f"Error: {csv_file} not found!")
         return
     
     urls = read_video_urls(csv_file)
+    if not urls:
+        print("No video URLs found in CSV file!")
+        return
+    
     print(f"Found {len(urls)} video URLs: {urls}")
     
-    # Read already compared pairs from backup file
-    backup_file = "backup_compared_videos_20250712.csv"
     already_compared_pairs = read_already_compared_pairs(backup_file)
+    print(f"Found {len(already_compared_pairs)} already compared pairs")
     
-    # Generate all distinct pairs, excluding already compared ones
+    # Generate distinct pairs
     pairs = generate_video_pairs(urls, already_compared_pairs)
     print(f"Generated {len(pairs)} distinct pairs to test")
     
     if not pairs:
-        print("No pairs to test!")
+        print("No new pairs to test!")
         return
     
     # Calculate estimated completion time
-    estimated_time, total_seconds = calculate_estimated_completion_time(len(pairs))
-    print(f"Estimated completion time: {estimated_time} (assuming 30 seconds per test)")
-    print(f"Total estimated time: {total_seconds//60} minutes {total_seconds%60} seconds")
+    estimated_time, total_seconds = calculate_estimated_completion_time(len(pairs), 120)  # 2 minutes per test
+    print(f"Estimated completion time: {estimated_time} UTC (assuming 2 minutes per test)")
+    print(f"Total estimated duration: {total_seconds//60} minutes {total_seconds%60} seconds")
     
-    # Configure Chrome options
+    # Initialize counters
+    successful_tests = 0
+    failed_tests = 0
+    busy_tests = 0
+    skipped_tests = 0
+    start_time = time.time()
+    
+    # Initialize Chrome driver
     chrome_options = Options()
+    chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--start-maximized")
-    # Uncomment the line below to run in headless mode
-    # chrome_options.add_argument("--headless")
-    
-    driver = webdriver.Chrome(options=chrome_options)
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--disable-extensions")
+    chrome_options.add_argument("--disable-background-timer-throttling")
+    chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+    chrome_options.add_argument("--disable-renderer-backgrounding")
+    chrome_options.add_argument("--disable-features=TranslateUI")
+    chrome_options.add_argument("--disable-ipc-flooding-protection")
+    chrome_options.add_argument("--remote-debugging-port=0")
+    # Additional optimizations for same-machine usage
+    chrome_options.add_argument("--disable-images")
+    chrome_options.add_argument("--disable-plugins")
+    chrome_options.add_argument("--disable-web-security")
+    chrome_options.add_argument("--disable-features=VizDisplayCompositor")
+    chrome_options.add_argument("--memory-pressure-off")
+    chrome_options.add_argument("--max_old_space_size=512")  # Limit memory usage
+    chrome_options.add_argument("--single-process")  # Use single process to save memory
+    # Additional memory optimizations
+    chrome_options.add_argument("--disable-background-networking")
+    chrome_options.add_argument("--disable-default-apps")
+    chrome_options.add_argument("--disable-sync")
+    chrome_options.add_argument("--disable-translate")
+    chrome_options.add_argument("--hide-scrollbars")
+    chrome_options.add_argument("--mute-audio")
+    chrome_options.add_argument("--no-first-run")
+    chrome_options.add_argument("--disable-logging")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-software-rasterizer")
+    chrome_options.add_argument("--disable-background-timer-throttling")
+    chrome_options.add_argument("--disable-renderer-backgrounding")
+    chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+    chrome_options.add_argument("--disable-features=TranslateUI")
+    chrome_options.add_argument("--disable-ipc-flooding-protection")
+    chrome_options.add_argument("--remote-debugging-port=0")
+    chrome_options.add_argument("--disable-extensions")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--headless")
     
     try:
-        successful_tests = 0
-        failed_tests = 0
-        start_time = datetime.now()
+        driver = webdriver.Chrome(options=chrome_options)
+        print("Chrome driver initialized successfully")
+    except SessionNotCreatedException:
+        print("Failed to create Chrome session. Trying headless mode...")
+        try:
+            driver = webdriver.Chrome(options=chrome_options)
+            print("Chrome driver initialized in headless mode")
+        except Exception as e:
+            print(f"Failed to initialize Chrome driver: {e}")
+            print("Please close any existing Chrome instances and try again.")
+            return
+    
+    # Test server health first
+    print("Testing server health...")
+    try:
+        # Set a 30-second timeout for the health check
+        driver.set_page_load_timeout(30)
+        driver.get("https://yt-coverhunter.fly.dev/")
+        time.sleep(5)
         
+        # Try to find the compare button to see if the page loads properly
+        try:
+            compare_button = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, "//button[contains(text(), 'Compare')]"))
+            )
+            print("✓ Server appears to be working")
+        except TimeoutException:
+            print("⚠️  Server health check failed: Could not find compare button within 10 seconds")
+            print("The server might be down or overloaded. Consider trying again later.")
+            driver.quit()
+            return
+    
+    except Exception as e:
+        print(f"⚠️  Server health check failed: {e}")
+        print("The server might be down or overloaded. Consider trying again later.")
+        driver.quit()
+        return
+    
+    try:
         for i, (url1, url2) in enumerate(pairs, 1):
             print(f"\n{'='*60}")
-            print(f"PROGRESS: {i}/{len(pairs)} pairs tested")
-            print(f"Successful: {successful_tests}, Failed: {failed_tests}")
-            
-            # Calculate remaining time based on actual progress
-            elapsed_time = (datetime.now() - start_time).total_seconds()
-            if i > 1:
-                avg_time_per_completed = elapsed_time / (i - 1)
-                remaining_pairs = len(pairs) - i + 1
-                remaining_seconds = remaining_pairs * avg_time_per_completed
-                estimated_completion = datetime.now() + timedelta(seconds=remaining_seconds)
-                print(f"Estimated completion: {estimated_completion.strftime('%H:%M:%S')}")
-            
+            print(f"Testing pair {i}/{len(pairs)}")
+            print(f"Video 1: {url1}")
+            print(f"Video 2: {url2}")
             print(f"{'='*60}")
             
-            success = test_video_pair(driver, url1, url2, i, len(pairs))
-            
-            if success:
-                successful_tests += 1
-                print(f"✓ Pair {i} completed successfully")
-            else:
+            try:
+                result = test_video_pair(driver, url1, url2, i, len(pairs))
+                
+                if result == "busy":
+                    busy_tests += 1
+                    print(f"⚠ Pair {i} is busy, moving to next pair...")
+                elif result == True:
+                    successful_tests += 1
+                    print(f"✓ Pair {i} completed successfully")
+                elif result == False:
+                    failed_tests += 1
+                    print(f"✗ Pair {i} failed")
+                else:
+                    skipped_tests += 1
+                    print(f"⏭ Pair {i} skipped")
+                    
+            except Exception as e:
+                print(f"❌ Error testing pair {i}: {e}")
                 failed_tests += 1
-                print(f"✗ Pair {i} failed")
+                print("Continuing with next pair...")
+                
+                # Check if driver is still working, restart if needed
+                try:
+                    driver.current_url
+                except:
+                    print("Driver seems to be broken, restarting...")
+                    try:
+                        driver.quit()
+                    except:
+                        pass
+                    driver = webdriver.Chrome(options=chrome_options)
+                    print("Driver restarted successfully")
             
             # Wait between tests to avoid overwhelming the server
             if i < len(pairs):
-                print("Waiting 2 seconds before next test...")
-                time.sleep(2)
+                print("Waiting 15 seconds before next test...")
+                time.sleep(15)
+            
+            # Clean up memory after each test
+            gc.collect()  # Force garbage collection
+            
+            # Clear browser data to reduce memory usage
+            clear_browser_data(driver)
+            
+            # Check memory usage and restart driver if needed
+            if check_memory_usage():
+                print("🔄 Restarting Chrome driver to free memory...")
+                try:
+                    driver.quit()
+                except:
+                    pass
+                driver = webdriver.Chrome(options=chrome_options)
+                print("Chrome driver restarted successfully")
+                gc.collect()  # Clean up after restart
+            
+            # Process in batches to reduce server load
+            if i % BATCH_SIZE == 0 and i < len(pairs):
+                print(f"\n{'='*60}")
+                print(f"Completed batch {i//BATCH_SIZE}. Taking a {BATCH_DELAY}s break to reduce server load...")
+                print(f"{'='*60}")
+                time.sleep(BATCH_DELAY)
+                # Extra memory cleanup between batches
+                gc.collect()
+                gc.collect()  # Double cleanup
         
         # Calculate final statistics
-        total_time = (datetime.now() - start_time).total_seconds()
+        total_time = time.time() - start_time
+        total_minutes = int(total_time // 60)
+        total_seconds = int(total_time % 60)
         avg_time_per_test = total_time / len(pairs) if len(pairs) > 0 else 0
+        success_rate = (successful_tests / len(pairs)) * 100 if len(pairs) > 0 else 0
         
         print(f"\n{'='*60}")
         print("FINAL RESULTS:")
-        print(f"Total pairs tested: {len(pairs)}")
+        print(f"Total pairs: {len(pairs)}")
         print(f"Successful: {successful_tests}")
         print(f"Failed: {failed_tests}")
-        print(f"Success rate: {(successful_tests/len(pairs)*100):.1f}%")
-        print(f"Total time: {total_time//60:.0f} minutes {total_time%60:.0f} seconds")
+        print(f"Busy: {busy_tests}")
+        print(f"Skipped: {skipped_tests}")
+        print(f"Success rate: {success_rate:.1f}%")
+        print(f"Total time: {total_minutes} minutes {total_seconds} seconds")
         print(f"Average time per test: {avg_time_per_test:.1f} seconds")
         print(f"{'='*60}")
         
