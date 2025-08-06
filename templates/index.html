@@ -356,6 +356,20 @@
             border-left: 3px solid #2196F3;
         }
 
+        .metrics-container {
+            margin-bottom: 20px;
+        }
+
+        .recall-stat {
+            background-color: #f5f5f5;
+            padding: 8px 12px;
+            border-radius: 4px;
+            margin-bottom: 12px;
+            font-size: 0.9em;
+            color: #666;
+            border-left: 3px solid #4CAF50;
+        }
+
         .video-preview {
             display: none;
             position: absolute;
@@ -1052,17 +1066,77 @@
             };
         }
 
+        function calculateRecall(comparedVideos) {
+            let correctCoversFound = 0;
+            let totalActualCovers = 0;
+            
+            comparedVideos.forEach(video => {
+                // Only count comparisons where we have user feedback
+                if (video.feedback === 'ok' || video.feedback === 'not-ok') {
+                    // Determine the actual result (ground truth)
+                    const actualResult = video.feedback === 'ok' ? video.result : 
+                                       (video.result === 'Cover' ? 'Not Cover' : 'Cover');
+                    
+                    // Count actual covers
+                    if (actualResult === 'Cover') {
+                        totalActualCovers++;
+                        // Count correctly identified covers
+                        if (video.result === 'Cover') {
+                            correctCoversFound++;
+                        }
+                    }
+                }
+            });
+            
+            if (totalActualCovers === 0) return null;
+            
+            // Calculate Wilson score interval for 95% confidence
+            const p = correctCoversFound / totalActualCovers;  // proportion
+            const n = totalActualCovers;  // sample size
+            const z = 1.96;  // 95% confidence level
+            
+            // Wilson score interval calculation
+            const denominator = 1 + (z * z) / n;
+            const center = (p + (z * z) / (2 * n)) / denominator;
+            const margin = z * Math.sqrt((p * (1 - p) + (z * z) / (4 * n)) / n) / denominator;
+            
+            const lowerBound = Math.max(0, (center - margin) * 100).toFixed(1);
+            const upperBound = Math.min(100, (center + margin) * 100).toFixed(1);
+            const recall = (p * 100).toFixed(1);
+            
+            return {
+                recall,
+                lowerBound,
+                upperBound,
+                samples: totalActualCovers
+            };
+        }
+
         function renderComparedVideos(comparedVideos) {
             const videoListElement = document.getElementById('compared-videos-list');
             videoListElement.innerHTML = ''; // Clear existing list
 
-            // Calculate and display accuracy
+            // Calculate and display accuracy and recall
             const accuracy = calculateAccuracy(comparedVideos);
-            const accuracyHtml = accuracy !== null ? 
-                `<p class="accuracy-stat">Estimated accuracy: ${accuracy.accuracy}% (95% CI: ${accuracy.lowerBound}%-${accuracy.upperBound}%) based on ${accuracy.samples} samples</p>` : 
-                '<p class="accuracy-stat">No feedback yet</p>';
+            const recall = calculateRecall(comparedVideos);
+            
+            let metricsHtml = '<div class="metrics-container">';
+            
+            if (accuracy !== null) {
+                metricsHtml += `<p class="accuracy-stat">Accuracy: ${accuracy.accuracy}% (95% CI: ${accuracy.lowerBound}%-${accuracy.upperBound}%) based on ${accuracy.samples} feedback samples</p>`;
+            } else {
+                metricsHtml += '<p class="accuracy-stat">Accuracy: No feedback yet</p>';
+            }
+            
+            if (recall !== null) {
+                metricsHtml += `<p class="recall-stat">Recall: ${recall.recall}% (95% CI: ${recall.lowerBound}%-${recall.upperBound}%) - covers found out of ${recall.samples} actual covers</p>`;
+            } else {
+                metricsHtml += '<p class="recall-stat">Recall: No actual covers in feedback data yet</p>';
+            }
+            
+            metricsHtml += '</div>';
 
-            videoListElement.innerHTML = accuracyHtml;
+            videoListElement.innerHTML = metricsHtml;
 
             // Reverse the array to show newest entries first
             const reversedVideos = [...comparedVideos].reverse();
