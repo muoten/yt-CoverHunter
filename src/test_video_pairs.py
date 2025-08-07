@@ -199,24 +199,57 @@ def generate_video_pairs(urls, already_compared_pairs, videos_with_both_results)
         print(f"  {i:2d}. {url}")
     print()
     
-    # For each video that needs testing, create pairs with videos that have both results
-    # This ensures we get different outcomes (Cover vs Not Cover)
+    # Track how many pairs each remaining video gets
+    video_pair_count = {}
+    for url in filtered_urls:
+        video_id = url.split('v=')[1] if 'v=' in url else url
+        video_pair_count[video_id] = 0
+    
+    # First, create pairs between the remaining videos themselves
+    if len(filtered_urls) >= 2:
+        for i in range(len(filtered_urls)):
+            for j in range(i + 1, len(filtered_urls)):
+                url1 = filtered_urls[i]
+                url2 = filtered_urls[j]
+                
+                # Check if this pair has already been processed
+                pair_exists = (url1, url2) in already_compared_pairs or (url2, url1) in already_compared_pairs
+                
+                if not pair_exists:
+                    pair = (url1, url2)
+                    pairs.append(pair)
+                    video_pair_count[url1.split('v=')[1] if 'v=' in url1 else url1] += 1
+                    video_pair_count[url2.split('v=')[1] if 'v=' in url2 else url2] += 1
+                    print(f"Added pair between remaining videos: {url1} vs {url2}")
+    
+    # Then, create additional pairs with fully tested videos to ensure variety
     for current_url in filtered_urls:
         current_id = current_url.split('v=')[1] if 'v=' in current_url else current_url
         
-        # Find videos that already have both Cover and Not Cover results to pair with
-        # This will give us different comparison outcomes
-        for url in urls:  # Use all URLs, including those with both results
-            other_id = url.split('v=')[1] if 'v=' in url else url
-            
-            if other_id == current_id:  # Skip self
-                continue
+        # Create up to 2 pairs per video (to ensure both Cover and Not Cover results)
+        pairs_needed = 2 - video_pair_count[current_id]
+        
+        if pairs_needed > 0:
+            # Find videos that already have both Cover and Not Cover results to pair with
+            for url in urls:  # Use all URLs, including those with both results
+                other_id = url.split('v=')[1] if 'v=' in url else url
                 
-            if other_id in videos_with_both_results:  # Only pair with videos that have both results
-                pair = (current_url, url)
-                pairs.append(pair)
-                print(f"Added pair: {current_url} vs {url} (with video that has both results)")
-                break  # Only need one pair per video for now
+                if other_id == current_id:  # Skip self
+                    continue
+                    
+                if other_id in videos_with_both_results:  # Only pair with videos that have both results
+                    # Check if this pair has already been processed
+                    pair_exists = (current_url, url) in already_compared_pairs or (url, current_url) in already_compared_pairs
+                    
+                    if not pair_exists:
+                        pair = (current_url, url)
+                        pairs.append(pair)
+                        video_pair_count[current_id] += 1
+                        print(f"Added pair: {current_url} vs {url} (with video that has both results)")
+                        pairs_needed -= 1
+                        
+                        if pairs_needed <= 0:
+                            break  # We have enough pairs for this video
     
     # Print summary
     print(f"\nGenerated {len(pairs)} pairs to test")
