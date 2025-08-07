@@ -556,7 +556,7 @@ def test_all_video_pairs():
     
     # Read video URLs and already compared pairs
     csv_file = "data/videos_to_test.csv"
-    backup_file = "backup_compared_videos.csv"
+    backup_file = "/data/compared_videos.csv"
     
     # Debug: list all backup files
     print("Available backup files:")
