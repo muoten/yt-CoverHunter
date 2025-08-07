@@ -44,30 +44,183 @@ def read_already_compared_pairs(backup_file):
         print(f"Backup file {backup_file} not found, will test all pairs")
         return compared_pairs
     
+    print(f"Reading backup file: {os.path.abspath(backup_file)}")
+    print(f"File size: {os.path.getsize(backup_file)} bytes")
+    
     try:
         with open(backup_file, 'r') as f:
             reader = csv.DictReader(f)
+            row_count = 0
             for row in reader:
+                row_count += 1
                 # Store both directions (url1,url2) and (url2,url1) since order doesn't matter
                 url1 = row['url1'].strip()
                 url2 = row['url2'].strip()
                 compared_pairs.add((url1, url2))
                 compared_pairs.add((url2, url1))  # Add reverse pair too
+        
+        print(f"Processed {row_count} rows from backup file")
         print(f"Found {len(compared_pairs)//2} already compared pairs in {backup_file}")
+            
     except Exception as e:
         print(f"Error reading backup file: {e}")
+        import traceback
+        traceback.print_exc()
     
     return compared_pairs
 
-def generate_video_pairs(urls, already_compared_pairs):
-    """Generate all distinct pairs of video URLs, excluding already compared ones"""
+def get_videos_with_both_results(backup_file):
+    """Get videos that already have both Cover and Not Cover results, considering manual feedback"""
+    videos_with_both = set()
+    
+    if not os.path.exists(backup_file):
+        return videos_with_both
+    
+    try:
+        # Track results for each video
+        video_results = {}
+        
+        with open(backup_file, 'r') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                url1 = row['url1'].strip()
+                url2 = row['url2'].strip()
+                result = row['result'].strip()
+                feedback = row.get('feedback', '').strip()
+                
+                # Extract video IDs
+                video1_id = url1.split('v=')[1] if 'v=' in url1 else url1
+                video2_id = url2.split('v=')[1] if 'v=' in url2 else url2
+                
+                # Determine the effective result considering manual feedback
+                effective_result = result
+                if feedback:
+                    if feedback == 'ok':
+                        # User confirmed the automatic result is correct
+                        effective_result = result
+                    elif feedback == 'not-ok':
+                        # User said the automatic result is wrong, so flip it
+                        effective_result = 'Not Cover' if result == 'Cover' else 'Cover'
+                    # If feedback is empty or other value, use the automatic result
+                
+                # Track results for each video
+                for video_id in [video1_id, video2_id]:
+                    if video_id not in video_results:
+                        video_results[video_id] = set()
+                    if effective_result:  # Only add if we have a valid result
+                        video_results[video_id].add(effective_result)
+        
+        # Find videos with both Cover and Not Cover results
+        for video_id, results in video_results.items():
+            if 'Cover' in results and 'Not Cover' in results:
+                videos_with_both.add(video_id)
+        
+        print(f"Found {len(videos_with_both)} videos with both Cover and Not Cover results (considering manual feedback)")
+        
+    except Exception as e:
+        print(f"Error analyzing backup file: {e}")
+    
+    return videos_with_both
+
+def find_videos_not_in_current_list(backup_file, current_urls):
+    """Find videos in backup file that are not in the current test list"""
+    backup_videos = set()
+    backup_video_urls = {}  # Map video_id to full URL
+    current_video_ids = set()
+    
+    # Get current video IDs
+    for url in current_urls:
+        video_id = url.split('v=')[1] if 'v=' in url else url
+        current_video_ids.add(video_id)
+    
+    # Get all videos from backup file
+    if os.path.exists(backup_file):
+        try:
+            with open(backup_file, 'r') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    url1 = row['url1'].strip()
+                    url2 = row['url2'].strip()
+                    
+                    # Extract video IDs
+                    video1_id = url1.split('v=')[1] if 'v=' in url1 else url1
+                    video2_id = url2.split('v=')[1] if 'v=' in url2 else url2
+                    
+                    backup_videos.add(video1_id)
+                    backup_videos.add(video2_id)
+                    
+                    # Store full URLs
+                    backup_video_urls[video1_id] = url1
+                    backup_video_urls[video2_id] = url2
+        except Exception as e:
+            print(f"Error reading backup file: {e}")
+    
+    # Find videos in backup but not in current list
+    videos_not_in_current = backup_videos - current_video_ids
+    
+    print(f"\n{'='*60}")
+    print("VIDEOS IN BACKUP BUT NOT IN CURRENT TEST LIST:")
+    print(f"{'='*60}")
+    print(f"Total videos in backup: {len(backup_videos)}")
+    print(f"Total videos in current test list: {len(current_video_ids)}")
+    print(f"Videos in backup but not in current list: {len(videos_not_in_current)}")
+    
+    if videos_not_in_current:
+        print(f"\nVideos not in current test list:")
+        for i, video_id in enumerate(sorted(videos_not_in_current), 1):
+            full_url = backup_video_urls.get(video_id, f"https://www.youtube.com/watch?v={video_id}")
+            print(f"  {i:2d}. {full_url}")
+    
+    print(f"{'='*60}")
+    
+    return videos_not_in_current
+
+def generate_video_pairs(urls, already_compared_pairs, videos_with_both_results):
+    """Generate pairs to ensure each video gets both Cover and Not Cover results"""
     pairs = []
-    for url1, url2 in itertools.combinations(urls, 2):
-        # Check if this pair (in either direction) has already been compared
-        if (url1, url2) not in already_compared_pairs and (url2, url1) not in already_compared_pairs:
-            pairs.append((url1, url2))
+    
+    # Filter out videos that already have both Cover and Not Cover results
+    filtered_urls = []
+    skipped_videos = []
+    
+    for url in urls:
+        video_id = url.split('v=')[1] if 'v=' in url else url
+        if video_id in videos_with_both_results:
+            skipped_videos.append(url)
         else:
-            print(f"Skipping already compared pair: {url1} vs {url2}")
+            filtered_urls.append(url)
+    
+    print(f"Filtered out {len(skipped_videos)} videos that already have both Cover and Not Cover results")
+    print(f"Remaining videos to test: {len(filtered_urls)}")
+    
+    # Print the remaining videos
+    print(f"\nRemaining videos to test:")
+    for i, url in enumerate(filtered_urls, 1):
+        print(f"  {i:2d}. {url}")
+    print()
+    
+    # For each video that needs testing, create pairs with videos that have both results
+    # This ensures we get different outcomes (Cover vs Not Cover)
+    for current_url in filtered_urls:
+        current_id = current_url.split('v=')[1] if 'v=' in current_url else current_url
+        
+        # Find videos that already have both Cover and Not Cover results to pair with
+        # This will give us different comparison outcomes
+        for url in urls:  # Use all URLs, including those with both results
+            other_id = url.split('v=')[1] if 'v=' in url else url
+            
+            if other_id == current_id:  # Skip self
+                continue
+                
+            if other_id in videos_with_both_results:  # Only pair with videos that have both results
+                pair = (current_url, url)
+                pairs.append(pair)
+                print(f"Added pair: {current_url} vs {url} (with video that has both results)")
+                break  # Only need one pair per video for now
+    
+    # Print summary
+    print(f"\nGenerated {len(pairs)} pairs to test")
+    
     return pairs
 
 def calculate_estimated_completion_time(num_pairs, avg_time_per_test=30):
@@ -83,6 +236,9 @@ def test_video_pair(driver, video1_url, video2_url, pair_index, total_pairs):
     # Reset stuck flag for this test and cancel any existing alarm
     stuck_flag = False
     signal.alarm(0)  # Cancel any existing alarm
+    
+    # Reset refresh count for this test
+    test_video_pair.refresh_count = 0
     
     print(f"\n{'='*60}")
     print(f"Testing pair {pair_index}/{total_pairs}")
@@ -210,15 +366,23 @@ def test_video_pair(driver, video1_url, video2_url, pair_index, total_pairs):
                     signal.alarm(0)  # Cancel alarm
                     return "busy"
                 
-                # Check if we're stuck (no progress for too long)
+                # Check if we're stuck (no progress for too long) - but limit refreshes
                 if current_time - last_check_time > 30:  # If no check for 30 seconds, we're stuck
-                    print(f"Stuck for {current_time - last_check_time:.0f} seconds, refreshing page...")
+                    # Count how many times we've refreshed
+                    refresh_count = getattr(test_video_pair, 'refresh_count', 0)
+                    if refresh_count >= 3:  # Maximum 3 refreshes
+                        print(f"Too many refreshes ({refresh_count}), treating as busy")
+                        signal.alarm(0)  # Cancel alarm
+                        return "busy"
+                    
+                    print(f"Stuck for {current_time - last_check_time:.0f} seconds, refreshing page... (refresh {refresh_count + 1}/3)")
                     try:
                         driver.refresh()
                         time.sleep(3)
                         start_wait_time = time.time()  # Reset timer
                         last_check_time = time.time()
                         signal.alarm(180)  # Reset alarm
+                        test_video_pair.refresh_count = refresh_count + 1
                         continue
                     except Exception as e:
                         print(f"Failed to refresh page: {e}")
@@ -323,15 +487,65 @@ def check_system_resources():
 
 def check_memory_usage():
     """Check current memory usage and return True if it's getting high"""
-    process = psutil.Process()
-    memory_mb = process.memory_info().rss / 1024 / 1024
-    print(f"Python process memory: {memory_mb:.1f} MB")
-    
-    # If memory usage is high, suggest restart
-    if memory_mb > 500:  # 500 MB threshold
-        print("⚠️  High memory usage detected")
-        return True
-    return False
+    try:
+        # Try multiple import paths for different environments
+        try:
+            from app.utils.memory_logger import log_detailed_memory
+        except ImportError:
+            try:
+                from utils.memory_logger import log_detailed_memory
+            except ImportError:
+                # Fallback: create a simple memory logger function
+                def log_detailed_memory():
+                    process = psutil.Process()
+                    vms_total = process.memory_info().vms / (1024 * 1024)
+                    print(f"\n=== Total VMS: {vms_total:.2f}MB ===")
+                    
+                    system_memory = psutil.virtual_memory()
+                    print(f"=== System Memory ===")
+                    print(f"Total: {system_memory.total / (1024**3):.2f}GB")
+                    print(f"Available: {system_memory.available / (1024**3):.2f}GB")
+                    print(f"Used: {system_memory.used / (1024**3):.2f}GB")
+                    print(f"Free: {system_memory.free / (1024**3):.2f}GB")
+                    print(f"Percent used: {system_memory.percent:.1f}%")
+        
+        # Log detailed memory information
+        log_detailed_memory()
+        
+        # Check Python process memory
+        process = psutil.Process()
+        memory_mb = process.memory_info().rss / 1024 / 1024
+        
+        # Check system memory
+        system_memory = psutil.virtual_memory()
+        free_gb = system_memory.free / (1024**3)
+        
+        print(f"Python process memory: {memory_mb:.1f} MB")
+        print(f"System free memory: {free_gb:.2f} GB")
+        
+        # If memory usage is high, suggest restart
+        if memory_mb > 500:  # 500 MB threshold
+            print("⚠️  High Python memory usage detected")
+            return True
+            
+        # If system memory is low, also suggest restart
+        if free_gb < 1.0:  # Less than 1 GB free
+            print("⚠️  Low system memory detected")
+            return True
+            
+        return False
+        
+    except Exception as e:
+        # Fallback if anything goes wrong
+        process = psutil.Process()
+        memory_mb = process.memory_info().rss / 1024 / 1024
+        print(f"Python process memory: {memory_mb:.1f} MB")
+        
+        # If memory usage is high, suggest restart
+        if memory_mb > 500:  # 500 MB threshold
+            print("⚠️  High memory usage detected")
+            return True
+        return False
 
 def test_all_video_pairs():
     """Test all distinct pairs of videos from the CSV file"""
@@ -343,6 +557,13 @@ def test_all_video_pairs():
     # Read video URLs and already compared pairs
     csv_file = "data/videos_to_test.csv"
     backup_file = "backup_compared_videos.csv"
+    
+    # Debug: list all backup files
+    print("Available backup files:")
+    for file in os.listdir('.'):
+        if 'backup' in file and 'compared' in file and file.endswith('.csv'):
+            print(f"  {file}")
+    
     if not os.path.exists(csv_file):
         print(f"Error: {csv_file} not found!")
         return
@@ -357,8 +578,14 @@ def test_all_video_pairs():
     already_compared_pairs = read_already_compared_pairs(backup_file)
     print(f"Found {len(already_compared_pairs)} already compared pairs")
     
+    videos_with_both_results = get_videos_with_both_results(backup_file)
+    print(f"Found {len(videos_with_both_results)} videos with both Cover and Not Cover results")
+    
+    # Find videos in backup but not in current test list
+    find_videos_not_in_current_list(backup_file, urls)
+    
     # Generate distinct pairs
-    pairs = generate_video_pairs(urls, already_compared_pairs)
+    pairs = generate_video_pairs(urls, already_compared_pairs, videos_with_both_results)
     print(f"Generated {len(pairs)} distinct pairs to test")
     
     if not pairs:

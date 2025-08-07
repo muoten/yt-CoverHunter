@@ -10,6 +10,15 @@ def log_detailed_memory():
     vms_total = process.memory_info().vms / (1024 * 1024)  # Convert to MB
     print(f"\n=== Total VMS: {vms_total:.2f}MB ===")
     
+    # Get system memory info
+    system_memory = psutil.virtual_memory()
+    print(f"=== System Memory ===")
+    print(f"Total: {system_memory.total / (1024**3):.2f}GB")
+    print(f"Available: {system_memory.available / (1024**3):.2f}GB")
+    print(f"Used: {system_memory.used / (1024**3):.2f}GB")
+    print(f"Free: {system_memory.free / (1024**3):.2f}GB")
+    print(f"Percent used: {system_memory.percent:.1f}%")
+    
     if config['LOG_MEMORY']:
         print("\n=== Detailed Memory Mapping ===")
         total_mapped = 0
