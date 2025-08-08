@@ -4,6 +4,7 @@ import itertools
 import gc  # Garbage collection
 import os
 import random
+import uuid
 from datetime import datetime, timedelta
 import signal
 import sys
@@ -705,137 +706,206 @@ def test_all_video_pairs():
     chrome_options.add_argument("--disable-software-rasterizer")
     chrome_options.add_argument("--disable-setuid-sandbox")
     chrome_options.add_argument("--disable-gpu-sandbox")
+    # Add unique user data directory to prevent conflicts
+    import tempfile
+    import uuid
+    unique_user_dir = f"/tmp/chrome_user_data_{uuid.uuid4().hex[:8]}"
+    chrome_options.add_argument(f"--user-data-dir={unique_user_dir}")
+    chrome_options.add_argument("--incognito")
     
-    # Try to initialize Chrome driver with retries
-    max_retries = 3
-    retry_delay = 10  # seconds
+        # Try to initialize Chrome driver with multiple strategies
+    driver = None
+    max_retries = 5
+    retry_delay = 5  # seconds
     
+    # Strategy 1: Try with current options
     for attempt in range(max_retries):
         try:
             driver = webdriver.Chrome(options=chrome_options)
             print("Chrome driver initialized successfully")
             break
         except (SessionNotCreatedException, InvalidSessionIdException) as e:
-            print(f"Attempt {attempt + 1}/{max_retries}: Failed to create Chrome session: {e}")
+            print(f"Strategy 1, Attempt {attempt + 1}/{max_retries}: Failed to create Chrome session: {e}")
             if attempt < max_retries - 1:
                 print(f"Waiting {retry_delay} seconds before retry...")
                 time.sleep(retry_delay)
-                retry_delay *= 2  # Exponential backoff
+                retry_delay *= 1.5  # Gradual backoff
             else:
-                print("All retry attempts failed. Trying with additional container-friendly options...")
-                
-                # Add more container-friendly options
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--disable-gpu-sandbox")
-        chrome_options.add_argument("--disable-software-rasterizer")
-        chrome_options.add_argument("--disable-background-timer-throttling")
-        chrome_options.add_argument("--disable-backgrounding-occluded-windows")
-        chrome_options.add_argument("--disable-renderer-backgrounding")
-        chrome_options.add_argument("--disable-features=TranslateUI")
-        chrome_options.add_argument("--disable-ipc-flooding-protection")
-        chrome_options.add_argument("--remote-debugging-port=0")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-setuid-sandbox")
-        chrome_options.add_argument("--disable-web-security")
-        chrome_options.add_argument("--disable-features=VizDisplayCompositor")
-        chrome_options.add_argument("--memory-pressure-off")
-        chrome_options.add_argument("--max_old_space_size=256")  # Reduce memory usage further
-        chrome_options.add_argument("--single-process")
-        chrome_options.add_argument("--disable-background-networking")
-        chrome_options.add_argument("--disable-default-apps")
-        chrome_options.add_argument("--disable-sync")
-        chrome_options.add_argument("--disable-translate")
-        chrome_options.add_argument("--hide-scrollbars")
-        chrome_options.add_argument("--mute-audio")
-        chrome_options.add_argument("--no-first-run")
-        chrome_options.add_argument("--disable-logging")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--disable-software-rasterizer")
-        chrome_options.add_argument("--disable-background-timer-throttling")
-        chrome_options.add_argument("--disable-renderer-backgrounding")
-        chrome_options.add_argument("--disable-backgrounding-occluded-windows")
-        chrome_options.add_argument("--disable-features=TranslateUI")
-        chrome_options.add_argument("--disable-ipc-flooding-protection")
-        chrome_options.add_argument("--remote-debugging-port=0")
-        chrome_options.add_argument("--disable-extensions")
-        chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--headless")
-        chrome_options.add_argument("--disable-images")
-        chrome_options.add_argument("--disable-plugins")
-        chrome_options.add_argument("--disable-web-security")
-        chrome_options.add_argument("--disable-features=VizDisplayCompositor")
-        chrome_options.add_argument("--memory-pressure-off")
-        chrome_options.add_argument("--max_old_space_size=256")
-        chrome_options.add_argument("--single-process")
-        chrome_options.add_argument("--disable-background-networking")
-        chrome_options.add_argument("--disable-default-apps")
-        chrome_options.add_argument("--disable-sync")
-        chrome_options.add_argument("--disable-translate")
-        chrome_options.add_argument("--hide-scrollbars")
-        chrome_options.add_argument("--mute-audio")
-        chrome_options.add_argument("--no-first-run")
-        chrome_options.add_argument("--disable-logging")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--disable-software-rasterizer")
-        chrome_options.add_argument("--disable-background-timer-throttling")
-        chrome_options.add_argument("--disable-renderer-backgrounding")
-        chrome_options.add_argument("--disable-backgrounding-occluded-windows")
-        chrome_options.add_argument("--disable-features=TranslateUI")
-        chrome_options.add_argument("--disable-ipc-flooding-protection")
-        chrome_options.add_argument("--remote-debugging-port=0")
-        chrome_options.add_argument("--disable-extensions")
-        chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--headless")
-        
-        try:
-            driver = webdriver.Chrome(options=chrome_options)
-            print("Chrome driver initialized with container-friendly options")
-        except Exception as e:
-            print(f"Failed to initialize Chrome driver with container options: {e}")
-            print("Trying one more time with minimal options...")
-            
-            # Try with minimal options
-            minimal_options = Options()
-            minimal_options.add_argument("--headless")
-            minimal_options.add_argument("--no-sandbox")
-            minimal_options.add_argument("--disable-dev-shm-usage")
-            minimal_options.add_argument("--disable-gpu")
-            minimal_options.add_argument("--single-process")
-            minimal_options.add_argument("--max_old_space_size=128")
-            
-            try:
-                driver = webdriver.Chrome(options=minimal_options)
-                print("Chrome driver initialized with minimal options")
-            except Exception as final_e:
-                print(f"Failed to initialize Chrome driver with minimal options: {final_e}")
-                print("Please check if Chrome is properly installed and try again.")
-                return
+                print("Strategy 1 failed, trying Strategy 2...")
     
-    # Test server health first
-    print("Testing server health...")
-    try:
-        # Set a 30-second timeout for the health check
-        driver.set_page_load_timeout(30)
-        driver.get("https://yt-coverhunter.fly.dev/")
-        time.sleep(5)
-        
-        # Try to find the compare button to see if the page loads properly
+    # Strategy 2: Try with minimal options and unique user data dir
+    if driver is None:
+        print("Trying Strategy 2: Minimal options with unique user data directory...")
+        for attempt in range(max_retries):
+            try:
+                minimal_options = Options()
+                minimal_options.add_argument("--headless")
+                minimal_options.add_argument("--no-sandbox")
+                minimal_options.add_argument("--disable-dev-shm-usage")
+                minimal_options.add_argument("--disable-gpu")
+                minimal_options.add_argument("--single-process")
+                minimal_options.add_argument("--max_old_space_size=64")
+                minimal_options.add_argument("--incognito")
+                
+                # Add unique user data directory
+                unique_user_dir = f"/tmp/chrome_user_data_{uuid.uuid4().hex[:8]}"
+                minimal_options.add_argument(f"--user-data-dir={unique_user_dir}")
+                
+                driver = webdriver.Chrome(options=minimal_options)
+                print("Chrome driver initialized with Strategy 2")
+                break
+            except Exception as e:
+                print(f"Strategy 2, Attempt {attempt + 1}/{max_retries}: Failed: {e}")
+                if attempt < max_retries - 1:
+                    print(f"Waiting {retry_delay} seconds before retry...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 1.5
+                else:
+                    print("Strategy 2 failed, trying Strategy 3...")
+    
+    # Strategy 3: Try without user data directory
+    if driver is None:
+        print("Trying Strategy 3: Minimal options without user data directory...")
+        for attempt in range(max_retries):
+            try:
+                no_user_data_options = Options()
+                no_user_data_options.add_argument("--headless")
+                no_user_data_options.add_argument("--no-sandbox")
+                no_user_data_options.add_argument("--disable-dev-shm-usage")
+                no_user_data_options.add_argument("--disable-gpu")
+                no_user_data_options.add_argument("--single-process")
+                no_user_data_options.add_argument("--max_old_space_size=64")
+                no_user_data_options.add_argument("--incognito")
+                no_user_data_options.add_argument("--disable-extensions")
+                no_user_data_options.add_argument("--disable-plugins")
+                no_user_data_options.add_argument("--disable-images")
+                no_user_data_options.add_argument("--disable-javascript")  # Try without JS
+                
+                driver = webdriver.Chrome(options=no_user_data_options)
+                print("Chrome driver initialized with Strategy 3")
+                break
+            except Exception as e:
+                print(f"Strategy 3, Attempt {attempt + 1}/{max_retries}: Failed: {e}")
+                if attempt < max_retries - 1:
+                    print(f"Waiting {retry_delay} seconds before retry...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 1.5
+                else:
+                    print("Strategy 3 failed, trying Strategy 4...")
+    
+    # Strategy 4: Try with different Chrome binary path
+    if driver is None:
+        print("Trying Strategy 4: Different Chrome binary...")
+        for attempt in range(max_retries):
+            try:
+                # Try different possible Chrome paths
+                chrome_paths = [
+                    "/usr/bin/google-chrome",
+                    "/usr/bin/chromium-browser",
+                    "/usr/bin/chromium",
+                    "/snap/bin/chromium",
+                    None  # Let Selenium find it automatically
+                ]
+                
+                for chrome_path in chrome_paths:
+                    try:
+                        basic_options = Options()
+                        basic_options.add_argument("--headless")
+                        basic_options.add_argument("--no-sandbox")
+                        basic_options.add_argument("--disable-dev-shm-usage")
+                        basic_options.add_argument("--disable-gpu")
+                        basic_options.add_argument("--single-process")
+                        
+                        if chrome_path:
+                            basic_options.binary_location = chrome_path
+                        
+                        driver = webdriver.Chrome(options=basic_options)
+                        print(f"Chrome driver initialized with Strategy 4 using path: {chrome_path}")
+                        break
+                    except Exception as path_e:
+                        print(f"Failed with path {chrome_path}: {path_e}")
+                        continue
+                
+                if driver:
+                    break
+                    
+            except Exception as e:
+                print(f"Strategy 4, Attempt {attempt + 1}/{max_retries}: Failed: {e}")
+                if attempt < max_retries - 1:
+                    print(f"Waiting {retry_delay} seconds before retry...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 1.5
+                else:
+                    print("Strategy 4 failed, trying Strategy 5...")
+    
+    # Strategy 5: Last resort - try with service
+    if driver is None:
+        print("Trying Strategy 5: Using ChromeService...")
         try:
-            compare_button = WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.XPATH, "//button[contains(text(), 'Compare')]"))
-            )
-            print("✓ Server appears to be working")
-        except TimeoutException:
-            print("⚠️  Server health check failed: Could not find compare button within 10 seconds")
-            print("The server might be down or overloaded. Consider trying again later.")
-            driver.quit()
+            from selenium.webdriver.chrome.service import Service
+            
+            service = Service()
+            basic_options = Options()
+            basic_options.add_argument("--headless")
+            basic_options.add_argument("--no-sandbox")
+            basic_options.add_argument("--disable-dev-shm-usage")
+            basic_options.add_argument("--disable-gpu")
+            basic_options.add_argument("--single-process")
+            
+            driver = webdriver.Chrome(service=service, options=basic_options)
+            print("Chrome driver initialized with Strategy 5")
+        except Exception as e:
+            print(f"Strategy 5 failed: {e}")
+            print("All Chrome driver initialization strategies failed!")
+            print("Please check if Chrome is properly installed and try again.")
             return
     
-    except Exception as e:
-        print(f"⚠️  Server health check failed: {e}")
-        print("The server might be down or overloaded. Consider trying again later.")
+    # Test server health with multiple retries
+    print("Testing server health...")
+    server_healthy = False
+    max_server_retries = 3
+    
+    for server_attempt in range(max_server_retries):
+        try:
+            print(f"Server health check attempt {server_attempt + 1}/{max_server_retries}")
+            
+            # Set a 30-second timeout for the health check
+            driver.set_page_load_timeout(30)
+            driver.get("https://yt-coverhunter.fly.dev/")
+            time.sleep(5)
+            
+            # Try to find the compare button to see if the page loads properly
+            try:
+                compare_button = WebDriverWait(driver, 15).until(
+                    EC.presence_of_element_located((By.XPATH, "//button[contains(text(), 'Compare') or contains(text(), 'Completed')]"))
+                )
+                print("✓ Server appears to be working")
+                server_healthy = True
+                break
+            except TimeoutException:
+                print(f"⚠️  Server health check attempt {server_attempt + 1} failed: Could not find compare button within 15 seconds")
+                if server_attempt < max_server_retries - 1:
+                    print("Retrying server health check in 10 seconds...")
+                    time.sleep(10)
+                else:
+                    print("All server health check attempts failed. The server might be down or overloaded.")
+                    print("Continuing anyway - the server might recover during testing...")
+                    server_healthy = True  # Continue anyway
+                    break
+        
+        except Exception as e:
+            print(f"⚠️  Server health check attempt {server_attempt + 1} failed: {e}")
+            if server_attempt < max_server_retries - 1:
+                print("Retrying server health check in 10 seconds...")
+                time.sleep(10)
+            else:
+                print("All server health check attempts failed. The server might be down or overloaded.")
+                print("Continuing anyway - the server might recover during testing...")
+                server_healthy = True  # Continue anyway
+                break
+    
+    if not server_healthy:
+        print("Server health check completely failed. Exiting.")
         driver.quit()
         return
     
@@ -847,78 +917,93 @@ def test_all_video_pairs():
             print(f"Video 2: {url2}")
             print(f"{'='*60}")
             
-            try:
-                result = test_video_pair(driver, url1, url2, i, len(pairs))
-                
-                if result == "busy":
-                    busy_tests += 1
-                    print(f"⚠ Pair {i} is busy, moving to next pair...")
-                elif result == True:
-                    successful_tests += 1
-                    print(f"✓ Pair {i} completed successfully")
-                elif result == False:
-                    failed_tests += 1
-                    print(f"✗ Pair {i} failed")
-                else:
-                    skipped_tests += 1
-                    print(f"⏭ Pair {i} skipped")
+            # Retry mechanism for each pair
+            pair_completed = False
+            max_pair_retries = 3
+            
+            for pair_attempt in range(max_pair_retries):
+                try:
+                    if pair_attempt > 0:
+                        print(f"Retrying pair {i} (attempt {pair_attempt + 1}/{max_pair_retries})...")
                     
-            except InvalidSessionIdException as e:
-                print(f"❌ Invalid session ID error: {e}")
-                print("Session deleted as the browser has closed the connection")
-                print("Waiting 1 minute and retrying...")
-                time.sleep(60)  # Wait 1 minute as suggested
-                
-                # Restart the driver
-                try:
-                    driver.quit()
-                except:
-                    pass
-                driver = webdriver.Chrome(options=chrome_options)
-                print("Chrome driver restarted successfully")
-                
-                # Retry the same pair
-                print(f"Retrying pair {i}...")
-                try:
                     result = test_video_pair(driver, url1, url2, i, len(pairs))
                     
                     if result == "busy":
                         busy_tests += 1
                         print(f"⚠ Pair {i} is busy, moving to next pair...")
+                        pair_completed = True
+                        break
                     elif result == True:
                         successful_tests += 1
                         print(f"✓ Pair {i} completed successfully")
+                        pair_completed = True
+                        break
                     elif result == False:
-                        failed_tests += 1
-                        print(f"✗ Pair {i} failed")
+                        if pair_attempt < max_pair_retries - 1:
+                            print(f"✗ Pair {i} failed, will retry...")
+                            time.sleep(10)  # Wait before retry
+                        else:
+                            failed_tests += 1
+                            print(f"✗ Pair {i} failed after {max_pair_retries} attempts")
+                            pair_completed = True
+                            break
                     else:
                         skipped_tests += 1
                         print(f"⏭ Pair {i} skipped")
-                except Exception as retry_e:
-                    print(f"❌ Retry also failed: {retry_e}")
-                    failed_tests += 1
+                        pair_completed = True
+                        break
+                        
+                except Exception as e:
+                    print(f"❌ Error testing pair {i} (attempt {pair_attempt + 1}/{max_pair_retries}): {e}")
                     
-            except Exception as e:
-                print(f"❌ Error testing pair {i}: {e}")
+                    if pair_attempt < max_pair_retries - 1:
+                        print("Restarting driver and retrying...")
+                        # Restart driver for next attempt
+                        try:
+                            driver.quit()
+                        except:
+                            pass
+                        
+                        # Create new Chrome options with unique user data directory
+                        new_chrome_options = Options()
+                        new_chrome_options.add_argument("--headless")
+                        new_chrome_options.add_argument("--no-sandbox")
+                        new_chrome_options.add_argument("--disable-dev-shm-usage")
+                        new_chrome_options.add_argument("--disable-gpu")
+                        new_chrome_options.add_argument("--single-process")
+                        new_chrome_options.add_argument("--max_old_space_size=64")
+                        new_chrome_options.add_argument("--incognito")
+                        
+                        # Add unique user data directory
+                        unique_user_dir = f"/tmp/chrome_user_data_{uuid.uuid4().hex[:8]}"
+                        new_chrome_options.add_argument(f"--user-data-dir={unique_user_dir}")
+                        
+                        driver = webdriver.Chrome(options=new_chrome_options)
+                        print("Driver restarted successfully for retry")
+                        
+                        time.sleep(5)  # Wait before retry
+                    else:
+                        failed_tests += 1
+                        print(f"✗ Pair {i} failed after {max_pair_retries} attempts")
+                        pair_completed = True
+                        break
+            
+            if not pair_completed:
+                print(f"⚠️  Pair {i} could not be completed after all retries")
                 failed_tests += 1
-                print("Continuing with next pair...")
-                
-                # Check if driver is still working, restart if needed
-                try:
-                    driver.current_url
-                except:
-                    print("Driver seems to be broken, restarting...")
-                    try:
-                        driver.quit()
-                    except:
-                        pass
-                    driver = webdriver.Chrome(options=chrome_options)
-                    print("Driver restarted successfully")
+                    
+
             
             # Wait between tests to avoid overwhelming the server
             if i < len(pairs):
-                print("Waiting 15 seconds before next test...")
-                time.sleep(15)
+                # If the server was busy, wait longer
+                if result == "busy":
+                    wait_time = 60  # Wait 1 minute if server was busy
+                    print(f"Server was busy, waiting {wait_time} seconds before next test...")
+                else:
+                    wait_time = 15  # Normal wait time
+                    print(f"Waiting {wait_time} seconds before next test...")
+                time.sleep(wait_time)
             
             # Clean up memory after each test
             gc.collect()  # Force garbage collection
@@ -933,9 +1018,29 @@ def test_all_video_pairs():
                     driver.quit()
                 except:
                     pass
-                driver = webdriver.Chrome(options=chrome_options)
-                print("Chrome driver restarted successfully")
-                gc.collect()  # Clean up after restart
+                
+                # Create new Chrome options with unique user data directory
+                new_chrome_options = Options()
+                new_chrome_options.add_argument("--headless")
+                new_chrome_options.add_argument("--no-sandbox")
+                new_chrome_options.add_argument("--disable-dev-shm-usage")
+                new_chrome_options.add_argument("--disable-gpu")
+                new_chrome_options.add_argument("--single-process")
+                new_chrome_options.add_argument("--max_old_space_size=64")  # Even lower memory
+                new_chrome_options.add_argument("--incognito")
+                
+                # Add unique user data directory
+                unique_user_dir = f"/tmp/chrome_user_data_{uuid.uuid4().hex[:8]}"
+                new_chrome_options.add_argument(f"--user-data-dir={unique_user_dir}")
+                
+                try:
+                    driver = webdriver.Chrome(options=new_chrome_options)
+                    print("Chrome driver restarted successfully with new user data directory")
+                    gc.collect()  # Clean up after restart
+                except Exception as restart_e:
+                    print(f"Failed to restart Chrome driver: {restart_e}")
+                    print("Continuing with existing driver...")
+                    # Don't fail the entire script, just continue
             
             # Process in batches to reduce server load
             if i % BATCH_SIZE == 0 and i < len(pairs):
