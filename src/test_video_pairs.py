@@ -543,18 +543,100 @@ def clear_browser_data(driver):
         print(f"Could not clear browser data: {e}")
 
 def check_system_resources():
-    """Check if system resources are available"""
-    cpu_percent = psutil.cpu_percent(interval=1)
-    memory_percent = psutil.virtual_memory().percent
-    
-    print(f"System resources - CPU: {cpu_percent:.1f}%, Memory: {memory_percent:.1f}%")
-    
-    # If system is overloaded, wait a bit
-    if cpu_percent > 90 or memory_percent > 90:
-        print("⚠️  System overloaded, waiting 30 seconds...")
-        time.sleep(30)
+    """Check current system resources (CPU, memory, load) and log detailed stats"""
+    try:
+        # CPU stats
+        cpu_percent = psutil.cpu_percent(interval=1)
+        cpu_count = psutil.cpu_count()
+        cpu_freq = psutil.cpu_freq()
+        
+        # Load average (Linux only)
+        load_avg = None
+        try:
+            load_avg = psutil.getloadavg()
+        except AttributeError:
+            # Windows doesn't have load average
+            pass
+        
+        # Memory stats
+        memory = psutil.virtual_memory()
+        
+        # Process stats
+        process = psutil.Process()
+        process_memory = process.memory_info().rss / (1024 * 1024)
+        process_cpu = process.cpu_percent()
+        
+        # Get all processes to see what's using CPU
+        all_processes = []
+        for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent']):
+            try:
+                proc_info = proc.info
+                if proc_info['cpu_percent'] > 0.1:  # Only show processes using >0.1% CPU
+                    all_processes.append(proc_info)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+        
+        # Sort by CPU usage
+        all_processes.sort(key=lambda x: x['cpu_percent'], reverse=True)
+        
+        # Log detailed stats
+        print(f"\n{'='*50}")
+        print(f"SYSTEM RESOURCE STATS - {datetime.now().strftime('%H:%M:%S')}")
+        print(f"{'='*50}")
+        
+        print(f"CPU:")
+        print(f"  - Usage: {cpu_percent:.1f}%")
+        print(f"  - Cores: {cpu_count}")
+        if cpu_freq:
+            print(f"  - Frequency: {cpu_freq.current:.0f} MHz")
+        
+        if load_avg:
+            print(f"  - Load Average: 1m={load_avg[0]:.2f}, 5m={load_avg[1]:.2f}, 15m={load_avg[2]:.2f}")
+        
+        print(f"\nMemory:")
+        print(f"  - Total: {memory.total / (1024**3):.2f} GB")
+        print(f"  - Used: {memory.used / (1024**3):.2f} GB ({memory.percent:.1f}%)")
+        print(f"  - Available: {memory.available / (1024**3):.2f} GB")
+        print(f"  - Free: {memory.free / (1024**3):.2f} GB")
+        
+        print(f"\nProcess:")
+        print(f"  - Memory: {process_memory:.1f} MB")
+        print(f"  - CPU: {process_cpu:.1f}%")
+        
+        print(f"\nTop CPU Processes:")
+        for i, proc in enumerate(all_processes[:10]):  # Show top 10
+            print(f"  {i+1:2d}. {proc['name']:<20} PID:{proc['pid']:<6} CPU:{proc['cpu_percent']:>6.1f}% MEM:{proc['memory_percent']:>5.1f}%")
+        
+        # Check for resource pressure
+        warnings = []
+        if cpu_percent > 80:
+            warnings.append(f"High CPU usage: {cpu_percent:.1f}%")
+        if load_avg and load_avg[0] > cpu_count:
+            warnings.append(f"High load average: {load_avg[0]:.2f} > {cpu_count} cores")
+        if memory.percent > 80:
+            warnings.append(f"High memory usage: {memory.percent:.1f}%")
+        if memory.available / (1024**3) < 0.5:
+            warnings.append(f"Low available memory: {memory.available / (1024**3):.2f} GB")
+        
+        # Look for Chrome processes specifically
+        chrome_processes = [p for p in all_processes if 'chrome' in p['name'].lower() or 'chromium' in p['name'].lower()]
+        if chrome_processes:
+            print(f"\nChrome Processes:")
+            for proc in chrome_processes:
+                print(f"  - {proc['name']} PID:{proc['pid']} CPU:{proc['cpu_percent']:.1f}% MEM:{proc['memory_percent']:.1f}%")
+        
+        if warnings:
+            print(f"\n⚠️  WARNINGS:")
+            for warning in warnings:
+                print(f"  - {warning}")
+            return True  # Indicate resource pressure
+        else:
+            print(f"\n✅ All resources OK")
+            return False
+            
+    except Exception as e:
+        print(f"Error checking system resources: {e}")
         return False
-    return True
 
 def check_memory_usage():
     """Check current memory usage and return True if it's getting high"""
@@ -1010,6 +1092,9 @@ def test_all_video_pairs():
             
             # Clear browser data to reduce memory usage
             clear_browser_data(driver)
+            
+            # Log comprehensive system resource stats
+            check_system_resources()
             
             # Check memory usage and restart driver if needed
             if check_memory_usage():
