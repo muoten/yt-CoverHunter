@@ -3,6 +3,7 @@ import csv
 import itertools
 import gc  # Garbage collection
 import os
+import random
 from datetime import datetime, timedelta
 import signal
 import sys
@@ -11,7 +12,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
-from selenium.common.exceptions import NoSuchElementException, TimeoutException, SessionNotCreatedException, StaleElementReferenceException
+from selenium.common.exceptions import NoSuchElementException, TimeoutException, SessionNotCreatedException, StaleElementReferenceException, InvalidSessionIdException
 from selenium.common.exceptions import TimeoutException
 import psutil  # For system resource monitoring
 
@@ -199,6 +200,16 @@ def generate_video_pairs(urls, already_compared_pairs, videos_with_both_results)
         print(f"  {i:2d}. {url}")
     print()
     
+    # Debug: check for duplicates in filtered_urls
+    unique_urls = set(filtered_urls)
+    if len(unique_urls) != len(filtered_urls):
+        print(f"WARNING: Found {len(filtered_urls) - len(unique_urls)} duplicate URLs in filtered_urls!")
+        duplicates = [url for url in filtered_urls if filtered_urls.count(url) > 1]
+        print(f"Duplicate URLs: {duplicates}")
+    else:
+        print(f"✓ No duplicate URLs found in {len(filtered_urls)} remaining videos")
+    print()
+    
     # Track how many pairs each remaining video gets
     video_pair_count = {}
     for url in filtered_urls:
@@ -207,10 +218,16 @@ def generate_video_pairs(urls, already_compared_pairs, videos_with_both_results)
     
     # First, create pairs between the remaining videos themselves
     if len(filtered_urls) >= 2:
+        print(f"Creating pairs between {len(filtered_urls)} remaining videos...")
         for i in range(len(filtered_urls)):
             for j in range(i + 1, len(filtered_urls)):
                 url1 = filtered_urls[i]
                 url2 = filtered_urls[j]
+                
+                # Explicit check to prevent self-pairing
+                if url1 == url2:
+                    print(f"WARNING: Skipping self-pair {url1} vs {url2}")
+                    continue
                 
                 # Check if this pair has already been processed
                 pair_exists = (url1, url2) in already_compared_pairs or (url2, url1) in already_compared_pairs
@@ -221,6 +238,8 @@ def generate_video_pairs(urls, already_compared_pairs, videos_with_both_results)
                     video_pair_count[url1.split('v=')[1] if 'v=' in url1 else url1] += 1
                     video_pair_count[url2.split('v=')[1] if 'v=' in url2 else url2] += 1
                     print(f"Added pair between remaining videos: {url1} vs {url2}")
+                else:
+                    print(f"Skipping already processed pair: {url1} vs {url2}")
     
     # Then, create additional pairs with fully tested videos to ensure variety
     for current_url in filtered_urls:
@@ -230,14 +249,31 @@ def generate_video_pairs(urls, already_compared_pairs, videos_with_both_results)
         pairs_needed = 2 - video_pair_count[current_id]
         
         if pairs_needed > 0:
+            # Get list of videos that already have both Cover and Not Cover results
+            fully_tested_videos = []
+            for url in urls:
+                video_id = url.split('v=')[1] if 'v=' in url else url
+                if video_id in videos_with_both_results:
+                    fully_tested_videos.append(url)
+            
+            # Shuffle the list to get diversity
+            random.shuffle(fully_tested_videos)
+            
+            # Track which fully tested videos we've already used for this current video
+            used_partners = set()
+            
             # Find videos that already have both Cover and Not Cover results to pair with
-            for url in urls:  # Use all URLs, including those with both results
+            for url in fully_tested_videos:  # Use shuffled list for diversity
                 other_id = url.split('v=')[1] if 'v=' in url else url
                 
                 if other_id == current_id:  # Skip self
                     continue
                     
                 if other_id in videos_with_both_results:  # Only pair with videos that have both results
+                    # Skip if we've already used this partner for this video
+                    if other_id in used_partners:
+                        continue
+                        
                     # Check if this pair has already been processed
                     pair_exists = (current_url, url) in already_compared_pairs or (url, current_url) in already_compared_pairs
                     
@@ -245,6 +281,7 @@ def generate_video_pairs(urls, already_compared_pairs, videos_with_both_results)
                         pair = (current_url, url)
                         pairs.append(pair)
                         video_pair_count[current_id] += 1
+                        used_partners.add(other_id)  # Mark this partner as used
                         print(f"Added pair: {current_url} vs {url} (with video that has both results)")
                         pairs_needed -= 1
                         
@@ -637,7 +674,7 @@ def test_all_video_pairs():
     skipped_tests = 0
     start_time = time.time()
     
-    # Initialize Chrome driver
+    # Initialize Chrome driver with container-friendly options
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
@@ -650,15 +687,13 @@ def test_all_video_pairs():
     chrome_options.add_argument("--disable-features=TranslateUI")
     chrome_options.add_argument("--disable-ipc-flooding-protection")
     chrome_options.add_argument("--remote-debugging-port=0")
-    # Additional optimizations for same-machine usage
     chrome_options.add_argument("--disable-images")
     chrome_options.add_argument("--disable-plugins")
     chrome_options.add_argument("--disable-web-security")
     chrome_options.add_argument("--disable-features=VizDisplayCompositor")
     chrome_options.add_argument("--memory-pressure-off")
-    chrome_options.add_argument("--max_old_space_size=512")  # Limit memory usage
-    chrome_options.add_argument("--single-process")  # Use single process to save memory
-    # Additional memory optimizations
+    chrome_options.add_argument("--max_old_space_size=256")  # Reduced memory usage
+    chrome_options.add_argument("--single-process")
     chrome_options.add_argument("--disable-background-networking")
     chrome_options.add_argument("--disable-default-apps")
     chrome_options.add_argument("--disable-sync")
@@ -667,31 +702,116 @@ def test_all_video_pairs():
     chrome_options.add_argument("--mute-audio")
     chrome_options.add_argument("--no-first-run")
     chrome_options.add_argument("--disable-logging")
-    chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-software-rasterizer")
-    chrome_options.add_argument("--disable-background-timer-throttling")
-    chrome_options.add_argument("--disable-renderer-backgrounding")
-    chrome_options.add_argument("--disable-backgrounding-occluded-windows")
-    chrome_options.add_argument("--disable-features=TranslateUI")
-    chrome_options.add_argument("--disable-ipc-flooding-protection")
-    chrome_options.add_argument("--remote-debugging-port=0")
-    chrome_options.add_argument("--disable-extensions")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--disable-setuid-sandbox")
+    chrome_options.add_argument("--disable-gpu-sandbox")
     
-    try:
-        driver = webdriver.Chrome(options=chrome_options)
-        print("Chrome driver initialized successfully")
-    except SessionNotCreatedException:
-        print("Failed to create Chrome session. Trying headless mode...")
+    # Try to initialize Chrome driver with retries
+    max_retries = 3
+    retry_delay = 10  # seconds
+    
+    for attempt in range(max_retries):
         try:
             driver = webdriver.Chrome(options=chrome_options)
-            print("Chrome driver initialized in headless mode")
+            print("Chrome driver initialized successfully")
+            break
+        except (SessionNotCreatedException, InvalidSessionIdException) as e:
+            print(f"Attempt {attempt + 1}/{max_retries}: Failed to create Chrome session: {e}")
+            if attempt < max_retries - 1:
+                print(f"Waiting {retry_delay} seconds before retry...")
+                time.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+            else:
+                print("All retry attempts failed. Trying with additional container-friendly options...")
+                
+                # Add more container-friendly options
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-gpu-sandbox")
+        chrome_options.add_argument("--disable-software-rasterizer")
+        chrome_options.add_argument("--disable-background-timer-throttling")
+        chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+        chrome_options.add_argument("--disable-renderer-backgrounding")
+        chrome_options.add_argument("--disable-features=TranslateUI")
+        chrome_options.add_argument("--disable-ipc-flooding-protection")
+        chrome_options.add_argument("--remote-debugging-port=0")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-setuid-sandbox")
+        chrome_options.add_argument("--disable-web-security")
+        chrome_options.add_argument("--disable-features=VizDisplayCompositor")
+        chrome_options.add_argument("--memory-pressure-off")
+        chrome_options.add_argument("--max_old_space_size=256")  # Reduce memory usage further
+        chrome_options.add_argument("--single-process")
+        chrome_options.add_argument("--disable-background-networking")
+        chrome_options.add_argument("--disable-default-apps")
+        chrome_options.add_argument("--disable-sync")
+        chrome_options.add_argument("--disable-translate")
+        chrome_options.add_argument("--hide-scrollbars")
+        chrome_options.add_argument("--mute-audio")
+        chrome_options.add_argument("--no-first-run")
+        chrome_options.add_argument("--disable-logging")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-software-rasterizer")
+        chrome_options.add_argument("--disable-background-timer-throttling")
+        chrome_options.add_argument("--disable-renderer-backgrounding")
+        chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+        chrome_options.add_argument("--disable-features=TranslateUI")
+        chrome_options.add_argument("--disable-ipc-flooding-protection")
+        chrome_options.add_argument("--remote-debugging-port=0")
+        chrome_options.add_argument("--disable-extensions")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--disable-images")
+        chrome_options.add_argument("--disable-plugins")
+        chrome_options.add_argument("--disable-web-security")
+        chrome_options.add_argument("--disable-features=VizDisplayCompositor")
+        chrome_options.add_argument("--memory-pressure-off")
+        chrome_options.add_argument("--max_old_space_size=256")
+        chrome_options.add_argument("--single-process")
+        chrome_options.add_argument("--disable-background-networking")
+        chrome_options.add_argument("--disable-default-apps")
+        chrome_options.add_argument("--disable-sync")
+        chrome_options.add_argument("--disable-translate")
+        chrome_options.add_argument("--hide-scrollbars")
+        chrome_options.add_argument("--mute-audio")
+        chrome_options.add_argument("--no-first-run")
+        chrome_options.add_argument("--disable-logging")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-software-rasterizer")
+        chrome_options.add_argument("--disable-background-timer-throttling")
+        chrome_options.add_argument("--disable-renderer-backgrounding")
+        chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+        chrome_options.add_argument("--disable-features=TranslateUI")
+        chrome_options.add_argument("--disable-ipc-flooding-protection")
+        chrome_options.add_argument("--remote-debugging-port=0")
+        chrome_options.add_argument("--disable-extensions")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--headless")
+        
+        try:
+            driver = webdriver.Chrome(options=chrome_options)
+            print("Chrome driver initialized with container-friendly options")
         except Exception as e:
-            print(f"Failed to initialize Chrome driver: {e}")
-            print("Please close any existing Chrome instances and try again.")
-            return
+            print(f"Failed to initialize Chrome driver with container options: {e}")
+            print("Trying one more time with minimal options...")
+            
+            # Try with minimal options
+            minimal_options = Options()
+            minimal_options.add_argument("--headless")
+            minimal_options.add_argument("--no-sandbox")
+            minimal_options.add_argument("--disable-dev-shm-usage")
+            minimal_options.add_argument("--disable-gpu")
+            minimal_options.add_argument("--single-process")
+            minimal_options.add_argument("--max_old_space_size=128")
+            
+            try:
+                driver = webdriver.Chrome(options=minimal_options)
+                print("Chrome driver initialized with minimal options")
+            except Exception as final_e:
+                print(f"Failed to initialize Chrome driver with minimal options: {final_e}")
+                print("Please check if Chrome is properly installed and try again.")
+                return
     
     # Test server health first
     print("Testing server health...")
@@ -742,6 +862,41 @@ def test_all_video_pairs():
                 else:
                     skipped_tests += 1
                     print(f"⏭ Pair {i} skipped")
+                    
+            except InvalidSessionIdException as e:
+                print(f"❌ Invalid session ID error: {e}")
+                print("Session deleted as the browser has closed the connection")
+                print("Waiting 1 minute and retrying...")
+                time.sleep(60)  # Wait 1 minute as suggested
+                
+                # Restart the driver
+                try:
+                    driver.quit()
+                except:
+                    pass
+                driver = webdriver.Chrome(options=chrome_options)
+                print("Chrome driver restarted successfully")
+                
+                # Retry the same pair
+                print(f"Retrying pair {i}...")
+                try:
+                    result = test_video_pair(driver, url1, url2, i, len(pairs))
+                    
+                    if result == "busy":
+                        busy_tests += 1
+                        print(f"⚠ Pair {i} is busy, moving to next pair...")
+                    elif result == True:
+                        successful_tests += 1
+                        print(f"✓ Pair {i} completed successfully")
+                    elif result == False:
+                        failed_tests += 1
+                        print(f"✗ Pair {i} failed")
+                    else:
+                        skipped_tests += 1
+                        print(f"⏭ Pair {i} skipped")
+                except Exception as retry_e:
+                    print(f"❌ Retry also failed: {retry_e}")
+                    failed_tests += 1
                     
             except Exception as e:
                 print(f"❌ Error testing pair {i}: {e}")
