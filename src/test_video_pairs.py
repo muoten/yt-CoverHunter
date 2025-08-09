@@ -177,23 +177,37 @@ def find_videos_not_in_current_list(backup_file, current_urls):
     
     return videos_not_in_current
 
-def generate_video_pairs(urls, already_compared_pairs, videos_with_both_results):
-    """Generate pairs to ensure each video gets both Cover and Not Cover results"""
+def generate_video_pairs(urls, already_compared_pairs, videos_with_both_results, compare_with_previous=1, filter_completed_videos=False, add_diversity_pairs=False):
+    """Generate pairs with limited comparisons per video
+    
+    Args:
+        urls: List of video URLs
+        already_compared_pairs: Set of already processed pairs
+        videos_with_both_results: Set of videos with both Cover and Not Cover results
+        compare_with_previous: Number of previous videos to compare with (default: 1)
+        filter_completed_videos: Whether to filter out videos with both results (default: False)
+        add_diversity_pairs: Whether to add extra pairs with fully tested videos (default: False)
+    """
     pairs = []
     
-    # Filter out videos that already have both Cover and Not Cover results
-    filtered_urls = []
-    skipped_videos = []
-    
-    for url in urls:
-        video_id = url.split('v=')[1] if 'v=' in url else url
-        if video_id in videos_with_both_results:
-            skipped_videos.append(url)
-        else:
-            filtered_urls.append(url)
-    
-    print(f"Filtered out {len(skipped_videos)} videos that already have both Cover and Not Cover results")
-    print(f"Remaining videos to test: {len(filtered_urls)}")
+    # Filter out videos that already have both Cover and Not Cover results (if enabled)
+    if filter_completed_videos:
+        filtered_urls = []
+        skipped_videos = []
+        
+        for url in urls:
+            video_id = url.split('v=')[1] if 'v=' in url else url
+            if video_id in videos_with_both_results:
+                skipped_videos.append(url)
+            else:
+                filtered_urls.append(url)
+        
+        print(f"Filtered out {len(skipped_videos)} videos that already have both Cover and Not Cover results")
+        print(f"Remaining videos to test: {len(filtered_urls)}")
+    else:
+        filtered_urls = urls.copy()
+        skipped_videos = []
+        print(f"Filter disabled - testing all {len(filtered_urls)} videos (including those with both results)")
     
     # Print the remaining videos
     print(f"\nRemaining videos to test:")
@@ -217,80 +231,89 @@ def generate_video_pairs(urls, already_compared_pairs, videos_with_both_results)
         video_id = url.split('v=')[1] if 'v=' in url else url
         video_pair_count[video_id] = 0
     
-    # First, create pairs between the remaining videos themselves
-    if len(filtered_urls) >= 2:
-        print(f"Creating pairs between {len(filtered_urls)} remaining videos...")
-        for i in range(len(filtered_urls)):
-            for j in range(i + 1, len(filtered_urls)):
-                url1 = filtered_urls[i]
-                url2 = filtered_urls[j]
-                
-                # Explicit check to prevent self-pairing
-                if url1 == url2:
-                    print(f"WARNING: Skipping self-pair {url1} vs {url2}")
-                    continue
-                
-                # Check if this pair has already been processed
-                pair_exists = (url1, url2) in already_compared_pairs or (url2, url1) in already_compared_pairs
-                
-                if not pair_exists:
-                    pair = (url1, url2)
-                    pairs.append(pair)
-                    video_pair_count[url1.split('v=')[1] if 'v=' in url1 else url1] += 1
-                    video_pair_count[url2.split('v=')[1] if 'v=' in url2 else url2] += 1
-                    print(f"Added pair between remaining videos: {url1} vs {url2}")
-                else:
-                    print(f"Skipping already processed pair: {url1} vs {url2}")
+    # Create pairs with limited comparisons per video
+    print(f"Creating pairs with each video comparing to {compare_with_previous} previous video(s)...")
     
-    # Then, create additional pairs with fully tested videos to ensure variety
-    for current_url in filtered_urls:
+    for i, current_url in enumerate(filtered_urls):
         current_id = current_url.split('v=')[1] if 'v=' in current_url else current_url
         
-        # Create up to 2 pairs per video (to ensure both Cover and Not Cover results)
-        pairs_needed = 2 - video_pair_count[current_id]
+        # Compare with up to 'compare_with_previous' previous videos
+        start_idx = max(0, i - compare_with_previous)
         
-        if pairs_needed > 0:
-            # Get list of videos that already have both Cover and Not Cover results
-            fully_tested_videos = []
-            for url in urls:
-                video_id = url.split('v=')[1] if 'v=' in url else url
-                if video_id in videos_with_both_results:
-                    fully_tested_videos.append(url)
+        for j in range(start_idx, i):
+            previous_url = filtered_urls[j]
             
-            # Shuffle the list to get diversity
-            random.shuffle(fully_tested_videos)
+            # Check if this pair has already been processed
+            pair_exists = (current_url, previous_url) in already_compared_pairs or (previous_url, current_url) in already_compared_pairs
             
-            # Track which fully tested videos we've already used for this current video
-            used_partners = set()
+            if not pair_exists:
+                pair = (previous_url, current_url)  # Keep consistent order
+                pairs.append(pair)
+                video_pair_count[current_id] += 1
+                previous_id = previous_url.split('v=')[1] if 'v=' in previous_url else previous_url
+                video_pair_count[previous_id] += 1
+                print(f"Added pair: {previous_url} vs {current_url}")
+            else:
+                print(f"Skipping already processed pair: {previous_url} vs {current_url}")
+    
+    # Optionally create additional pairs with fully tested videos to ensure variety
+    if add_diversity_pairs:
+        print(f"\nAdding pairs with fully tested videos for diversity...")
+        
+        for current_url in filtered_urls:
+            current_id = current_url.split('v=')[1] if 'v=' in current_url else current_url
             
-            # Find videos that already have both Cover and Not Cover results to pair with
-            for url in fully_tested_videos:  # Use shuffled list for diversity
-                other_id = url.split('v=')[1] if 'v=' in url else url
+            # Create up to 2 pairs per video (to ensure both Cover and Not Cover results)
+            pairs_needed = max(0, 2 - video_pair_count[current_id])
+            
+            if pairs_needed > 0:
+                # Get list of videos that already have both Cover and Not Cover results
+                fully_tested_videos = []
+                for url in urls:
+                    video_id = url.split('v=')[1] if 'v=' in url else url
+                    if video_id in videos_with_both_results:
+                        fully_tested_videos.append(url)
                 
-                if other_id == current_id:  # Skip self
-                    continue
+                # Shuffle the list to get diversity
+                random.shuffle(fully_tested_videos)
+                
+                # Track which fully tested videos we've already used for this current video
+                used_partners = set()
+                
+                # Find videos that already have both Cover and Not Cover results to pair with
+                for url in fully_tested_videos[:pairs_needed * 2]:  # Limit search to avoid too many iterations
+                    other_id = url.split('v=')[1] if 'v=' in url else url
                     
-                if other_id in videos_with_both_results:  # Only pair with videos that have both results
-                    # Skip if we've already used this partner for this video
-                    if other_id in used_partners:
+                    if other_id == current_id:  # Skip self
                         continue
                         
-                    # Check if this pair has already been processed
-                    pair_exists = (current_url, url) in already_compared_pairs or (url, current_url) in already_compared_pairs
-                    
-                    if not pair_exists:
-                        pair = (current_url, url)
-                        pairs.append(pair)
-                        video_pair_count[current_id] += 1
-                        used_partners.add(other_id)  # Mark this partner as used
-                        print(f"Added pair: {current_url} vs {url} (with video that has both results)")
-                        pairs_needed -= 1
+                    if other_id in videos_with_both_results:  # Only pair with videos that have both results
+                        # Skip if we've already used this partner for this video
+                        if other_id in used_partners:
+                            continue
+                            
+                        # Check if this pair has already been processed
+                        pair_exists = (current_url, url) in already_compared_pairs or (url, current_url) in already_compared_pairs
                         
-                        if pairs_needed <= 0:
-                            break  # We have enough pairs for this video
+                        if not pair_exists:
+                            pair = (current_url, url)
+                            pairs.append(pair)
+                            video_pair_count[current_id] += 1
+                            used_partners.add(other_id)  # Mark this partner as used
+                            print(f"Added pair: {current_url} vs {url} (with video that has both results)")
+                            pairs_needed -= 1
+                            
+                            if pairs_needed <= 0:
+                                break  # We have enough pairs for this video
+    else:
+        print(f"\nSkipping diversity pairs (add_diversity_pairs=False)")
     
     # Print summary
     print(f"\nGenerated {len(pairs)} pairs to test")
+    print(f"Pair distribution:")
+    for video_id, count in video_pair_count.items():
+        if count > 0:
+            print(f"  - Video ending in {video_id[-8:]}: {count} pairs")
     
     return pairs
 
@@ -737,8 +760,18 @@ def test_all_video_pairs():
     # Find videos in backup but not in current test list
     find_videos_not_in_current_list(backup_file, urls)
     
-    # Generate distinct pairs
-    pairs = generate_video_pairs(urls, already_compared_pairs, videos_with_both_results)
+    # Generate distinct pairs (compare each video with 1 previous video by default)
+    # You can change this to 3 to compare with 3 previous videos: compare_with_previous=3
+    # You can disable filtering completed videos: filter_completed_videos=False
+    # You can add diversity pairs: add_diversity_pairs=True
+    pairs = generate_video_pairs(
+        urls, 
+        already_compared_pairs, 
+        videos_with_both_results, 
+        compare_with_previous=1,
+        filter_completed_videos=False,  # Set to False to test all videos
+        add_diversity_pairs=False       # Set to True to add extra pairs for diversity
+    )
     print(f"Generated {len(pairs)} distinct pairs to test")
     
     if not pairs:
