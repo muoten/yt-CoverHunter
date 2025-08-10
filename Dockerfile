@@ -80,6 +80,6 @@ COPY data/ /code/data/
 # Create volume for persistent data
 VOLUME /data
 
-# Run both the API and test script (API first, then test script after delay)
-CMD ["sh", "-c", "uvicorn youtube_cover_detector_api:app --host $HOST --port $PORT --workers 1 --log-level debug --access-log --use-colors & sleep 10 && nohup python /code/src/test_video_pairs.py &"]
+# Run the application
+CMD ["sh", "-c", "echo 'Starting container...' && PYTHONUNBUFFERED=1 uvicorn youtube_cover_detector_api:app --host $HOST --port $PORT --workers 1 --log-level debug --access-log --use-colors"]
 EXPOSE 8080
