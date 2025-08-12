@@ -81,5 +81,5 @@ COPY data/ /code/data/
 VOLUME /data
 
 # Run API, review script, then test script (in sequence)
-CMD ["sh", "-c", "uvicorn youtube_cover_detector_api:app --host 0.0.0.0 --port 8080 --workers 1 --log-level debug --access-log --use-colors & sleep 10 && python /code/src/review_video_pairs.py && nohup python /code/src/test_video_pairs.py & wait"]
+CMD ["sh", "-c", "uvicorn youtube_cover_detector_api:app --host 0.0.0.0 --port 8080 --workers 1 --log-level debug --access-log --use-colors & sleep 10 && python /code/src/review_video_pairs.py && nohup python /code/src/test_video_pairs.py > /code/test_video_pairs.log 2>&1 & wait"]
 EXPOSE 8080
