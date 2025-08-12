@@ -102,12 +102,11 @@ def safe_driver_quit(driver):
 
 def read_video_urls(csv_file):
     """Read video URLs from CSV file"""
-    urls = []
-    with open(csv_file, 'r') as f:
-        reader = csv.reader(f)
-        for row in reader:
-            if row and row[0].strip():  # Skip empty rows
-                urls.append(row[0].strip())
+    # header is "clique,youtube_url"
+    df = pd.read_csv(csv_file)
+    df = df.dropna(subset=['youtube_url'])
+    urls = df['youtube_url'].tolist()
+
     return urls
 
 def read_already_compared_pairs(backup_file):
@@ -1086,7 +1085,7 @@ def test_all_video_pairs():
         
     finally:
         print("\nClosing browser...")
-        driver.quit()
+        safe_driver_quit(driver)
 
 if __name__ == "__main__":
     print("Testing all video pairs from videos_to_test.csv...")
