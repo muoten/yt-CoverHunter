@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime, timedelta
 import signal
 import sys
+import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
