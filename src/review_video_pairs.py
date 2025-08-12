@@ -61,6 +61,7 @@ def review_video_pairs():
     # Write back the file with exact same format (preserve Windows line endings)
     with open("/data/compared_videos_reviewed.csv", 'wb') as f:
         f.write(b'\r\n'.join(lines))              
+    shutil.copy("/data/compared_videos_reviewed.csv", "/data/compared_videos.csv")
 
 
 if __name__ == "__main__":
