@@ -67,7 +67,7 @@ def create_chrome_driver():
     
     # Try to create driver with multiple strategies
     max_retries = 3
-    retry_delay = 2
+    retry_delay = 1  # Reduced from 2
     
     for attempt in range(max_retries):
         try:
@@ -931,7 +931,7 @@ def test_all_video_pairs():
             
             # Retry mechanism for each pair
             pair_completed = False
-            max_pair_retries = 3
+            max_pair_retries = 2
             
             for pair_attempt in range(max_pair_retries):
                 try:
@@ -954,7 +954,7 @@ def test_all_video_pairs():
                             failed_tests += 1
                             pair_completed = True
                             break
-                        time.sleep(5)  # Wait before retry
+                        time.sleep(3)  # Wait before retry (reduced from 5)
                         continue
                     elif result == True:
                         successful_tests += 1
@@ -964,7 +964,7 @@ def test_all_video_pairs():
                     elif result == False:
                         if pair_attempt < max_pair_retries - 1:
                             print(f"✗ Pair {i} failed, will retry...")
-                            time.sleep(10)  # Wait before retry
+                            time.sleep(5)  # Wait before retry (reduced from 10)
                         else:
                             failed_tests += 1
                             print(f"✗ Pair {i} failed after {max_pair_retries} attempts")
@@ -988,7 +988,7 @@ def test_all_video_pairs():
                             failed_tests += 1
                             pair_completed = True
                             break
-                        time.sleep(5)  # Wait before retry
+                        time.sleep(3)  # Wait before retry (reduced from 5)
                     else:
                         failed_tests += 1
                         print(f"✗ Pair {i} failed after {max_pair_retries} attempts")
@@ -1005,10 +1005,10 @@ def test_all_video_pairs():
             if i < len(pairs):
                 # If the server was busy, wait longer
                 if result == "busy":
-                    wait_time = 60  # Wait 1 minute if server was busy
+                    wait_time = 30  # Wait 30 seconds if server was busy (reduced from 60)
                     print(f"Server was busy, waiting {wait_time} seconds before next test...")
                 else:
-                    wait_time = 15  # Normal wait time
+                    wait_time = 10  # Normal wait time (reduced from 15)
                     print(f"Waiting {wait_time} seconds before next test...")
                 time.sleep(wait_time)
             
