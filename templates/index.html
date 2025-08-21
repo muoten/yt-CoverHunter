@@ -356,6 +356,16 @@
             border-left: 3px solid #2196F3;
         }
 
+        .precision-stat {
+            background-color: #f5f5f5;
+            padding: 8px 12px;
+            border-radius: 4px;
+            margin-bottom: 12px;
+            font-size: 0.9em;
+            color: #666;
+            border-left: 3px solid #2196F3;
+        }
+
         .metrics-container {
             margin-bottom: 20px;
         }
@@ -1029,24 +1039,31 @@
             return confidence;
         }
 
-        function calculateAccuracy(comparedVideos) {
-            let okCount = 0;
-            let totalFeedback = 0;
+        function calculatePrecision(comparedVideos) {
+            let truePositives = 0;
+            let falsePositives = 0;
+            let totalSamples = 0;
             
             comparedVideos.forEach(video => {
                 if (video.feedback === 'ok' || video.feedback === 'not-ok') {
-                    totalFeedback++;
-                    if (video.feedback === 'ok') {
-                        okCount++;
+                    totalSamples++;
+                    // True Positive: Model predicted Cover and it was actually correct (feedback = 'ok')
+                    if (video.result === 'Cover' && video.feedback === 'ok') {
+                        truePositives++;
+                    }
+                    // False Positive: Model predicted Cover but it was actually wrong (feedback = 'not-ok')
+                    else if (video.result === 'Cover' && video.feedback === 'not-ok') {
+                        falsePositives++;
                     }
                 }
             });
             
-            if (totalFeedback === 0) return null;
+            const totalPredictedCovers = truePositives + falsePositives;
+            if (totalPredictedCovers === 0) return null;
             
             // Calculate Wilson score interval for 95% confidence
-            const p = okCount / totalFeedback;  // proportion
-            const n = totalFeedback;  // sample size
+            const p = truePositives / totalPredictedCovers;  // precision proportion
+            const n = totalPredictedCovers;  // sample size
             const z = 1.96;  // 95% confidence level
             
             // Wilson score interval calculation
@@ -1056,13 +1073,13 @@
             
             const lowerBound = Math.max(0, (center - margin) * 100).toFixed(1);
             const upperBound = Math.min(100, (center + margin) * 100).toFixed(1);
-            const accuracy = (p * 100).toFixed(1);
+            const precision = (p * 100).toFixed(1);
             
             return {
-                accuracy,
+                precision,
                 lowerBound,
                 upperBound,
-                samples: totalFeedback
+                samples: totalSamples
             };
         }
 
@@ -1116,16 +1133,16 @@
             const videoListElement = document.getElementById('compared-videos-list');
             videoListElement.innerHTML = ''; // Clear existing list
 
-            // Calculate and display accuracy and recall
-            const accuracy = calculateAccuracy(comparedVideos);
+            // Calculate and display precision and recall
+            const precision = calculatePrecision(comparedVideos);
             const recall = calculateRecall(comparedVideos);
             
             let metricsHtml = '<div class="metrics-container">';
             
-            if (accuracy !== null) {
-                metricsHtml += `<p class="accuracy-stat">Accuracy: ${accuracy.accuracy}% (95% CI: ${accuracy.lowerBound}%-${accuracy.upperBound}%) based on ${accuracy.samples} feedback samples</p>`;
+            if (precision !== null) {
+                metricsHtml += `<p class="precision-stat">Precision: ${precision.precision}% (95% CI: ${precision.lowerBound}%-${precision.upperBound}%) based on ${precision.samples} predicted covers</p>`;
             } else {
-                metricsHtml += '<p class="accuracy-stat">Accuracy: No feedback yet</p>';
+                metricsHtml += '<p class="precision-stat">Precision: No predicted covers yet</p>';
             }
             
             if (recall !== null) {
