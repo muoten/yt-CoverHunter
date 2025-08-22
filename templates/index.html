@@ -1079,7 +1079,8 @@
                 precision,
                 lowerBound,
                 upperBound,
-                samples: totalSamples
+                samples: totalSamples,
+                totalPredictedCovers: totalPredictedCovers
             };
         }
 
@@ -1140,13 +1141,13 @@
             let metricsHtml = '<div class="metrics-container">';
             
             if (precision !== null) {
-                metricsHtml += `<p class="precision-stat">Precision: ${precision.precision}% (95% CI: ${precision.lowerBound}%-${precision.upperBound}%) based on ${precision.samples} predicted covers</p>`;
+                metricsHtml += `<p class="precision-stat">Precision: ${precision.precision}% (95% CI: ${precision.lowerBound}%-${precision.upperBound}%) of ${precision.totalPredictedCovers} predicted covers (${precision.samples} reviews)</p>`;
             } else {
                 metricsHtml += '<p class="precision-stat">Precision: No predicted covers yet</p>';
             }
             
             if (recall !== null) {
-                metricsHtml += `<p class="recall-stat">Recall: ${recall.recall}% (95% CI: ${recall.lowerBound}%-${recall.upperBound}%) - covers found out of ${recall.samples} actual covers</p>`;
+                metricsHtml += `<p class="recall-stat">Recall: ${recall.recall}% (95% CI: ${recall.lowerBound}%-${recall.upperBound}%) of ${recall.samples} actual covers</p>`;
             } else {
                 metricsHtml += '<p class="recall-stat">Recall: No actual covers in feedback data yet</p>';
             }
