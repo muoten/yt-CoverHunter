@@ -998,6 +998,7 @@ def test_all_video_pairs():
             if not pair_completed:
                 print(f"⚠️  Pair {i} could not be completed after all retries")
                 failed_tests += 1
+                result = "failed"  # Set a default value for result
                     
 
             
