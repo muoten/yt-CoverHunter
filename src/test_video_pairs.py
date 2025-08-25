@@ -931,7 +931,7 @@ def test_all_video_pairs():
             
             # Retry mechanism for each pair
             pair_completed = False
-            max_pair_retries = 0
+            max_pair_retries = 1
             
             for pair_attempt in range(max_pair_retries):
                 try:
