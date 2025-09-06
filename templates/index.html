@@ -1203,9 +1203,16 @@
 
         function getConfidenceText(score) {
             const numScore = parseFloat(score);
+            const THRESHOLD = 0.2;
+
             let confidence = "High (>90%)";
-            if (numScore >= 0.2 && numScore <= 0.4) {
-                confidence = "Medium (>60%)";
+
+            if (numScore > 0.1 && numScore < 0.2) {
+                confidence = "Medium (>75%)";
+            }
+            
+            if (numScore < 0.1) {
+                confidence = "Very high (>95%)";
             }
             return confidence;
         }
