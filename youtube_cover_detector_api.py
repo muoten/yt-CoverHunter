@@ -1,7 +1,7 @@
 import os
 import logging
 import sys
-from fastapi import FastAPI, HTTPException, BackgroundTasks, APIRouter, Request
+from fastapi import FastAPI, HTTPException, BackgroundTasks, APIRouter, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -196,8 +196,39 @@ async def root():
         return f.read()
 
 @app.get("/api/compared-videos")
-async def get_compared_videos():
-    """Get history - this should always work"""
+async def get_compared_videos(
+    page: int = Query(1, ge=1, description="Page number (1-based)"),
+    per_page: int = Query(100, ge=1, le=500, description="Items per page")
+):
+    """Get history with pagination"""
+    videos = read_compared_videos()
+    total_count = len(videos)
+    
+    # Calculate pagination
+    start_index = (page - 1) * per_page
+    end_index = start_index + per_page
+    
+    # Get paginated results (reverse to show newest first)
+    paginated_videos = list(reversed(videos))[start_index:end_index]
+    
+    total_pages = (total_count + per_page - 1) // per_page
+    
+    return {
+        "videos": paginated_videos,
+        "pagination": {
+            "current_page": page,
+            "per_page": per_page,
+            "total_count": total_count,
+            "total_pages": total_pages,
+            "has_prev": page > 1,
+            "has_next": page < total_pages
+        }
+    }
+
+
+@app.get("/api/compared-videos-all")
+async def get_all_compared_videos():
+    """Get all videos for metrics calculation"""
     videos = read_compared_videos()
     return videos
 

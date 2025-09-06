@@ -747,6 +747,52 @@
             border-radius: 4px;
             margin-bottom: 15px;
         }
+    
+        .pagination-controls {
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .pagination-info {
+            margin-bottom: 10px;
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .pagination-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+
+        .pagination-btn {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            background: white;
+            color: #333;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 0.9em;
+            transition: all 0.2s;
+        }
+
+        .pagination-btn:hover:not(:disabled) {
+            background: #f5f5f5;
+            border-color: #999;
+        }
+
+        .pagination-btn.active {
+            background: #2196F3;
+            color: white;
+            border-color: #2196F3;
+        }
+
+        .pagination-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
     </style>
 </head>
 <body>
@@ -864,7 +910,7 @@
 
         async function checkExistingResult(url1, url2) {
             try {
-                const comparedVideos = await fetch('/api/compared-videos').then(r => r.json());
+                const comparedVideos = await fetch('/api/compared-videos-all').then(r => r.json());
                 return comparedVideos.find(v => 
                     (v.url1 === url1 && v.url2 === url2) || 
                     (v.url1 === url2 && v.url2 === url1)
@@ -1020,13 +1066,28 @@
             throw new Error('Timeout waiting for results');
         }
 
-        async function fetchComparedVideos() {
+                // Pagination state
+        let currentPage = 1;
+        const itemsPerPage = 100;
+        
+        async function fetchComparedVideos(page = 1) {
             try {
-                const response = await fetch('/api/compared-videos');
-                const comparedVideos = await response.json();
-                renderComparedVideos(comparedVideos);
+                const response = await fetch(`/api/compared-videos?page=${page}&per_page=${itemsPerPage}`);
+                const data = await response.json();
+                currentPage = page;
+                renderComparedVideos(data.videos, data.pagination);
             } catch (error) {
                 console.error('Error fetching compared videos:', error);
+            }
+        }
+        
+        async function fetchAllComparedVideos() {
+            try {
+                const response = await fetch('/api/compared-videos-all');
+                return await response.json();
+            } catch (error) {
+                console.error('Error fetching all compared videos:', error);
+                return [];
             }
         }
 
@@ -1130,13 +1191,53 @@
             };
         }
 
-        function renderComparedVideos(comparedVideos) {
+                function createPaginationControls(pagination) {
+            let html = '<div class="pagination-controls">';
+            html += `<div class="pagination-info">Page ${pagination.current_page} of ${pagination.total_pages} (${pagination.total_count} total)</div>`;
+            html += '<div class="pagination-buttons">';
+            
+            // Previous button
+            if (pagination.has_prev) {
+                html += `<button class="pagination-btn" onclick="goToPage(${pagination.current_page - 1})">Previous</button>`;
+            } else {
+                html += `<button class="pagination-btn" disabled>Previous</button>`;
+            }
+            
+            // Page numbers
+            const startPage = Math.max(1, pagination.current_page - 2);
+            const endPage = Math.min(pagination.total_pages, pagination.current_page + 2);
+            
+            for (let i = startPage; i <= endPage; i++) {
+                if (i === pagination.current_page) {
+                    html += `<button class="pagination-btn active">${i}</button>`;
+                } else {
+                    html += `<button class="pagination-btn" onclick="goToPage(${i})">${i}</button>`;
+                }
+            }
+            
+            // Next button
+            if (pagination.has_next) {
+                html += `<button class="pagination-btn" onclick="goToPage(${pagination.current_page + 1})">Next</button>`;
+            } else {
+                html += `<button class="pagination-btn" disabled>Next</button>`;
+            }
+            
+            html += '</div></div>';
+            return html;
+        }
+
+        function goToPage(page) {
+            fetchComparedVideos(page);
+        }
+
+        function renderComparedVideos(comparedVideos, pagination) {
             const videoListElement = document.getElementById('compared-videos-list');
             videoListElement.innerHTML = ''; // Clear existing list
 
-            // Calculate and display precision and recall
-            const precision = calculatePrecision(comparedVideos);
-            const recall = calculateRecall(comparedVideos);
+            // Calculate and display precision and recall using all videos for metrics
+            fetchAllComparedVideos().then(allVideos => {
+                const precision = calculatePrecision(allVideos);
+                const recall = calculateRecall(allVideos);
             
             let metricsHtml = '<div class="metrics-container">';
             
@@ -1152,14 +1253,17 @@
                 metricsHtml += '<p class="recall-stat">Recall: No actual covers in feedback data yet</p>';
             }
             
-            metricsHtml += '</div>';
+                metricsHtml += '</div>';
 
-            videoListElement.innerHTML = metricsHtml;
+                // Add pagination controls
+                if (pagination) {
+                    metricsHtml += createPaginationControls(pagination);
+                }
 
-            // Reverse the array to show newest entries first
-            const reversedVideos = [...comparedVideos].reverse();
+                videoListElement.innerHTML = metricsHtml;
 
-            reversedVideos.forEach(video => {
+                // Videos are already in correct order from API
+                comparedVideos.forEach(video => {
                 const videoId1 = extractVideoId(video.url1);
                 const videoId2 = extractVideoId(video.url2);
                 const confidence = getConfidenceText(video.score);
@@ -1202,7 +1306,8 @@
                         </button>
                     </div>
                 `;
-                videoListElement.appendChild(videoItem);
+                    videoListElement.appendChild(videoItem);
+                });
             });
         }
 
@@ -1273,7 +1378,7 @@
 
             // Load latest example from CSV
             try {
-                const response = await fetch('/api/compared-videos');
+                const response = await fetch('/api/compared-videos-all');
                 const comparedVideos = await response.json();
                 if (comparedVideos.length > 0) {
                     const latestExample = comparedVideos[comparedVideos.length - 1];
