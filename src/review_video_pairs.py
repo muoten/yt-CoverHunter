@@ -28,6 +28,7 @@ def review_video_pairs():
                 
                 if pd.notna(clique1) and pd.notna(clique2):
                     counter += 1
+                    print("Applying feedback to row ", index, "clique1: ", clique1, "clique2: ", clique2, "result: ", row['result'])
                     # in this case we have to edit the feedback column in df
                     if (clique1 == clique2) and (row['result'] == 'Cover'):
                         df.at[index, 'feedback'] = 'ok'
