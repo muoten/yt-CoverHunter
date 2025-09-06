@@ -1208,12 +1208,17 @@
             let confidence = "High (>90%)";
 
             if (numScore > 0.1 && numScore < 0.2) {
-                confidence = "Medium (>75%)";
+                confidence = "Low (>75%)";
             }
             
             if (numScore < 0.1) {
                 confidence = "Very high (>95%)";
             }
+
+            if (numScore > 0.2) {
+                confidence = "Medium (>85%)";
+            }
+
             return confidence;
         }
 
