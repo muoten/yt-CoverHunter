@@ -504,7 +504,7 @@ class CoverDetector:
                 active_tasks[request['id']] = request
             
             # Add delay to avoid rate limiting
-            time.sleep(5)  # 5 second delay between downloads
+            time.sleep(15)  # 5 second delay between downloads
             
             # Update progress for second video download
             if request:
