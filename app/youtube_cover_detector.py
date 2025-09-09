@@ -28,6 +28,7 @@ import glob
 import psutil
 from datetime import datetime
 from app.utils.memory_logger import log_detailed_memory
+import random
 
 # Initialize queue and tasks at module level
 comparison_queue = asyncio.Queue()
@@ -96,6 +97,26 @@ def setup_logger():
 logger = setup_logger()
 
 def _generate_audio_from_youtube_id(youtube_id, request=None):
+    """Generate audio from YouTube ID with user agent rotation"""
+    
+    # List of realistic user agents to rotate through
+    user_agents = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:120.0) Gecko/20100101 Firefox/120.0',
+        'Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/120.0.0.0 Safari/537.36'
+    ]
+    
+    # Randomly select a user agent
+    selected_user_agent = random.choice(user_agents)
+    logger.info(f"Using user agent: {selected_user_agent[:50]}...")
+    
     try:
         logger.debug("Starting audio generation process")
         wav_folder = Path(WAV_FOLDER)
@@ -130,6 +151,15 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
         ydl_opts = {
             'format': 'bestaudio/best',
             'external_downloader': 'aria2c',
+            'http_headers': {
+                'User-Agent': selected_user_agent,
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+            },
             'external_downloader_args': {
                 'aria2c': [
                     # Increase concurrent connections
