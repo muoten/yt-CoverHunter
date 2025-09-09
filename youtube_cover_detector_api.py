@@ -274,27 +274,6 @@ async def startup_event():
     start_background_worker(comparison_queue, shared_active_tasks)
     logger.info("Queue processor started")
 
-# Initialize CSV files if they don't exist
-def init_csv_files():
-    logger.info("Initializing CSV files...")
-    csv_files = {
-        config['SCORES_CSV_FILE']: ['url1', 'url2', 'result', 'score', 'feedback'],
-        config['VECTORS_CSV_FILE']: ['url', 'vector']
-    }
-    
-    for filepath, headers in csv_files.items():
-        try:
-            if not os.path.exists(filepath):
-                logger.info(f"Creating CSV file: {filepath}")
-                os.makedirs(os.path.dirname(filepath), exist_ok=True)
-                with open(filepath, 'w', newline='') as f:
-                    writer = csv.writer(f)
-                    writer.writerow(headers)
-        except Exception as e:
-            logger.error(f"Error creating CSV file {filepath}: {e}")
-            raise
-
-init_csv_files()
 
 # Store results in memory
 detection_results: Dict[str, Dict] = {}

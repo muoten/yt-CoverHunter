@@ -326,6 +326,13 @@ def update_vectors_csv(youtube_id, embeddings):
     else:
         logger.debug(f"Youtube ID {youtube_id} not in vectors.csv, adding...")
 
+    # Write the updated data back to the file
+    with open(VECTORS_CSV_FILE, 'w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=['youtube_id', 'embeddings'])
+        writer.writeheader()
+        for yt_id, emb in vectors_csv.items():
+            writer.writerow({'youtube_id': yt_id, 'embeddings': emb})
+
 def read_compared_videos():
     compared_videos = []
     try:
