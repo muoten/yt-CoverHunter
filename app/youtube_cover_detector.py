@@ -331,6 +331,7 @@ def update_vectors_csv(youtube_id, embeddings):
         writer = csv.DictWriter(f, fieldnames=['youtube_id', 'embeddings'])
         writer.writeheader()
         for yt_id, emb in vectors_csv.items():
+            logger.info(f"Writing {yt_id} to vectors.csv")
             writer.writerow({'youtube_id': yt_id, 'embeddings': emb})
 
 def read_compared_videos():
@@ -485,7 +486,7 @@ class CoverDetector:
         self.process_only_first_n_seconds = config['PROCESS_ONLY_FIRST_N_SECONDS']
         
     async def compare_videos(self, url1: str, url2: str, request: Dict = None) -> Dict[str, Any]:
-        log_memory("Start comparison")
+        logger.info("Start comparison")
         try:
             start_time = time.time()
             
@@ -501,6 +502,10 @@ class CoverDetector:
             if request:
                 request['progress'] = 25
                 active_tasks[request['id']] = request
+            
+            # Add delay to avoid rate limiting
+            import time
+            time.sleep(5)  # 5 second delay between downloads
             
             # Update progress for second video download
             if request:
@@ -531,9 +536,9 @@ class CoverDetector:
                 active_tasks[request['id']] = request
             
             # Generate embeddings
-            log_memory("Before embeddings")
+            logger.info("Before embeddings")
             embeddings = _generate_embeddings_from_filepaths(wav_path1, wav_path2)
-            log_memory("After embeddings")
+            logger.info("After embeddings")
             keys = list(embeddings.keys())
             embedding1 = embeddings[keys[0]]
             embedding2 = embeddings[keys[1]]
@@ -548,9 +553,9 @@ class CoverDetector:
                 active_tasks[request['id']] = request
             
             # Calculate distance and determine if it's a cover
-            log_memory("Before distance calculation")
+            logger.info("Before distance calculation")
             distance = _cosine_distance(embedding1, embedding2)
-            log_memory("End comparison")
+            logger.info("End comparison")
             
             is_cover = distance < self.threshold
             
