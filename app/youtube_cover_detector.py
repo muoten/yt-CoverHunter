@@ -537,6 +537,10 @@ class CoverDetector:
             keys = list(embeddings.keys())
             embedding1 = embeddings[keys[0]]
             embedding2 = embeddings[keys[1]]
+
+            # Save embeddings to vectors.csv
+            for youtube_id, embedding in embeddings.items():
+                update_vectors_csv(youtube_id, embedding)
             
             if request:
                 request['status'] = 'comparing'
