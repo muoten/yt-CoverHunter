@@ -267,33 +267,41 @@ def _generate_dataset_txt_from_files(filename1, filename2):
     print("dataset.txt has been successfully created!")
 
 
-def _generate_embeddings_from_filepaths(audio_path1, audio_path2):
-	COVERHUNTER_FOLDER = config['COVERHUNTER_FOLDER']
-	MODEL_FOLDER = config['MODEL_FOLDER']
-	os.system(f"mkdir -p {WAV_FOLDER}")
-	os.system(f"rm -f {WAV_FOLDER}/*.txt")
-	_generate_dataset_txt_from_files(audio_path1, audio_path2)
-	os.system(f"cp {WAV_FOLDER}/dataset.txt {WAV_FOLDER}/sp_aug.txt")
-	os.system(f"rm -rf {WAV_FOLDER}/cqt_feat/")
-	os.system(f"rm -rf {WAV_FOLDER}/sp_wav/")
-	os.system(f"cp {COVERHUNTER_FOLDER}data/covers80_testset/hparams.yaml {WAV_FOLDER}/hparams.yaml")
+def _generate_embeddings_from_filepaths(audio_path1, audio_path2, embeddings1=None, embeddings2=None):
+    COVERHUNTER_FOLDER = config['COVERHUNTER_FOLDER']
+    MODEL_FOLDER = config['MODEL_FOLDER']
+    os.system(f"mkdir -p {WAV_FOLDER}")
+    os.system(f"rm -f {WAV_FOLDER}/*.txt")
 
-	
-	# first we get features with coverhunter
-	command = f"PYTHONPATH={COVERHUNTER_FOLDER} python {COVERHUNTER_FOLDER}/tools/extract_csi_features.py {WAV_FOLDER}"
-	if os.system(command) != 0:
-		raise ValueError("Feature extraction failed") 
+    if embeddings1 is not None:
+        audio_path1 = audio_path2
+    if embeddings2 is not None:
+        audio_path2 = audio_path1
 
-	# then we get the embeddings with coverhunter
-	command = f"PYTHONPATH={COVERHUNTER_FOLDER} python {COVERHUNTER_FOLDER}/tools/make_embeds.py {WAV_FOLDER} {MODEL_FOLDER}"
-	if os.system(command) != 0:
-		raise ValueError("Embedding extraction failed")
+    if embeddings1 is not None and embeddings2 is not None:
+        return embeddings1, embeddings2
+
+    _generate_dataset_txt_from_files(audio_path1, audio_path2)
+    os.system(f"cp {WAV_FOLDER}/dataset.txt {WAV_FOLDER}/sp_aug.txt")
+    os.system(f"rm -rf {WAV_FOLDER}/cqt_feat/")
+    os.system(f"rm -rf {WAV_FOLDER}/sp_wav/")
+    os.system(f"cp {COVERHUNTER_FOLDER}data/covers80_testset/hparams.yaml {WAV_FOLDER}/hparams.yaml")
+
+    # first we get features with coverhunter
+    command = f"PYTHONPATH={COVERHUNTER_FOLDER} python {COVERHUNTER_FOLDER}/tools/extract_csi_features.py {WAV_FOLDER}"
+    if os.system(command) != 0:
+        raise ValueError("Feature extraction failed") 
+
+    # then we get the embeddings with coverhunter
+    command = f"PYTHONPATH={COVERHUNTER_FOLDER} python {COVERHUNTER_FOLDER}/tools/make_embeds.py {WAV_FOLDER} {MODEL_FOLDER}"
+    if os.system(command) != 0:
+        raise ValueError("Embedding extraction failed")
 
     # Path to the pickle file
-	pickle_file_path = os.path.join(WAV_FOLDER, 'reference_embeddings.pkl')
+    pickle_file_path = os.path.join(WAV_FOLDER, 'reference_embeddings.pkl')
     # get the embeddings from the file
-	embeddings = pickle.load(open(pickle_file_path, 'rb'))
-	return embeddings
+    embeddings = pickle.load(open(pickle_file_path, 'rb'))
+    return embeddings
 
 def _cosine_distance(vec1, vec2):
     logger.debug(f"Calculating cosine distance between vectors: {vec1} and {vec2}")
@@ -337,6 +345,46 @@ async def process_videos(video_ids):
 
 # apart from the current csv file, we will also save another csv file named "vectors.csv" with key the youtube id and value the embeddings
 
+def get_vectors_csv():
+    VECTORS_CSV_FILE = config['VECTORS_CSV_FILE']
+    if not os.path.exists(VECTORS_CSV_FILE):
+        return {}
+    
+    vectors_csv = {}
+    with open(VECTORS_CSV_FILE, 'r') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            # Convert string back to numpy array
+            try:
+                import numpy as np
+                embeddings_str = row['embeddings']
+                
+                # Parse the format: "[ 0.05285105 -0.00633944  0.17383038 ... ]"
+                # Remove brackets and normalize whitespace
+                clean_str = embeddings_str.strip('[]')
+                # Replace any newlines with spaces and normalize whitespace
+                clean_str = ' '.join(clean_str.split())
+                
+                # Split by spaces and convert to float
+                values = []
+                for x in clean_str.split():
+                    if x.strip():
+                        try:
+                            values.append(float(x))
+                        except ValueError:
+                            continue
+                
+                embeddings_array = np.array(values, dtype=np.float32)
+                vectors_csv[row['youtube_id']] = embeddings_array
+                logger.debug(f"Successfully parsed embeddings for {row['youtube_id']} (length: {len(values)})")
+                
+            except Exception as e:
+                logger.error(f"Error parsing embeddings for {row['youtube_id']}: {e}")
+                logger.error(f"Problematic embeddings string: {embeddings_str[:100]}...")
+                continue
+    
+    return vectors_csv
+
 def update_vectors_csv(video_filepath, embeddings):
     # check if the youtube_id is already in the csv file
     # create csv file if not exists
@@ -363,9 +411,33 @@ def update_vectors_csv(video_filepath, embeddings):
     with open(VECTORS_CSV_FILE, 'r') as f:
         reader = csv.DictReader(f)
         for row in reader:
-            vectors_csv[row['youtube_id']] = row['embeddings']
+            # Convert string back to numpy array
+            try:
+                import numpy as np
+                embeddings_str = row['embeddings']
+                
+                # Parse the format: "[ 0.05285105 -0.00633944  0.17383038 ... ]"
+                clean_str = embeddings_str.strip('[]')
+                # Replace any newlines with spaces and normalize whitespace
+                clean_str = ' '.join(clean_str.split())
+                
+                # Split by spaces and convert to float
+                values = []
+                for x in clean_str.split():
+                    if x.strip():
+                        try:
+                            values.append(float(x))
+                        except ValueError:
+                            continue
+                
+                embeddings_array = np.array(values, dtype=np.float32)
+                vectors_csv[row['youtube_id']] = embeddings_array
+                
+            except Exception as e:
+                logger.error(f"Error parsing embeddings for {row['youtube_id']}: {e}")
+                continue
     
-    logger.info(f"Current vectors_csv contents: {vectors_csv}")
+    logger.info(f"Current vectors_csv contents: {list(vectors_csv.keys())}")
     logger.info(f"Current vectors_csv keys: {list(vectors_csv.keys())}")
     
     if youtube_id in vectors_csv:
@@ -375,16 +447,27 @@ def update_vectors_csv(video_filepath, embeddings):
         logger.info(f"Youtube ID '{youtube_id}' not in vectors.csv, adding...")
         vectors_csv[youtube_id] = embeddings
 
-    logger.info(f"Updated vectors_csv: {vectors_csv}")
+    logger.info(f"Updated vectors_csv: {list(vectors_csv.keys())}")
     logger.info(f"About to write {len(vectors_csv)} entries to CSV")
 
-    # Write the updated data back to the file
+    # Write the updated data back to the file using the exact same format
     with open(VECTORS_CSV_FILE, 'w', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=['youtube_id', 'embeddings'])
         writer.writeheader()
         for yt_id, emb in vectors_csv.items():
             logger.info(f"Writing youtube_id: '{yt_id}' to vectors.csv")
-            writer.writerow({'youtube_id': yt_id, 'embeddings': emb})
+            # Convert numpy array to the exact same format with line breaks
+            # Format: "[ 0.05285105 -0.00633944  0.17383038 ... ]"
+            embeddings_list = [f'{x:.8f}' for x in emb]
+            
+            # Add line breaks every 6 values to match the original format
+            formatted_values = []
+            for i in range(0, len(embeddings_list), 6):
+                chunk = embeddings_list[i:i+6]
+                formatted_values.append('  '.join(chunk))
+            
+            embeddings_str = f'"[ {"  ".join(formatted_values)} ]"'
+            writer.writerow({'youtube_id': yt_id, 'embeddings': embeddings_str})
     
     logger.info(f"=== END UPDATE_VECTORS_CSV TRACE ===")
 
@@ -551,15 +634,23 @@ class CoverDetector:
                 active_tasks[request['id']] = request
             
             video_id1 = extract_video_id(url1)
-            logger.info("Starting download of first video")
-            wav1 = _generate_audio_from_youtube_id(video_id1, request=request)
-            if request:
-                request['progress'] = 25
-                active_tasks[request['id']] = request
+            vectors_csv = get_vectors_csv()
+            if video_id1 in vectors_csv:
+                logger.info("Using existing embeddings for first video")
+                embeddings1 = vectors_csv[video_id1]
+            else:
+                embeddings1 = None
+
+                logger.info("Starting download of first video")
+                wav1 = _generate_audio_from_youtube_id(video_id1, request=request)
+                wav_path1 = os.path.join(self.wav_folder, wav1)
+                if request:
+                    request['progress'] = 25
+                    active_tasks[request['id']] = request
             
-            # Add random delay to avoid rate limiting
-            delay = random.uniform(15, 60)
-            time.sleep(delay)  # random delay between downloads
+                # Add random delay to avoid rate limiting
+                delay = random.uniform(15, 60)
+                time.sleep(delay)  # random delay between downloads
             
             # Update progress for second video download
             if request:
@@ -567,22 +658,26 @@ class CoverDetector:
                 request['progress'] = 30
                 active_tasks[request['id']] = request
             
+
             video_id2 = extract_video_id(url2)
-            logger.info("Starting download of second video")
-            wav2 = _generate_audio_from_youtube_id(video_id2, request=request)
-            if request:
-                request['progress'] = 45
-                active_tasks[request['id']] = request
+            if video_id2 in vectors_csv:
+                logger.info("Using existing embeddings for second video")
+                embeddings2 = vectors_csv[video_id2]
+            else:
+                embeddings2 = None
+
+                logger.info("Starting download of second video")
+                wav2 = _generate_audio_from_youtube_id(video_id2, request=request)
+                wav_path2 = os.path.join(self.wav_folder, wav2)
+                if request:
+                    request['progress'] = 45
+                    active_tasks[request['id']] = request
             
-            # Update progress for processing
-            if request:
-                request['status'] = 'processing'
-                request['progress'] = 50
-                active_tasks[request['id']] = request
-            
-            # Get WAV file paths
-            wav_path1 = os.path.join(self.wav_folder, wav1)
-            wav_path2 = os.path.join(self.wav_folder, wav2)
+                # Update progress for processing
+                if request:
+                    request['status'] = 'processing'
+                    request['progress'] = 50
+                    active_tasks[request['id']] = request
             
             if request:
                 request['status'] = 'generating_embeddings'
@@ -591,15 +686,52 @@ class CoverDetector:
             
             # Generate embedding
             logger.info("Before embeddings")
-            embeddings = _generate_embeddings_from_filepaths(wav_path1, wav_path2)
-            logger.info("After embeddings")
-            keys = list(embeddings.keys())
-            embedding1 = embeddings[keys[0]]
-            embedding2 = embeddings[keys[1]]
+            if embeddings1 is None or embeddings2 is None:
+                if embeddings1 is not None:
+                    wav_path1 = wav_path2
+                if embeddings2 is not None:
+                    wav_path2 = wav_path1
+                embeddings = _generate_embeddings_from_filepaths(wav_path1, wav_path2, embeddings1=embeddings1, embeddings2=embeddings2)
+                keys = list(embeddings.keys())
+                
+                # Ensure we have exactly 2 embeddings in the correct order
+                if len(keys) == 1:
+                    # We only have one embedding, need to add the existing one
+                    if embeddings1 is not None:
+                        # We have embeddings1, so the generated embedding is for video2
+                        # Add embeddings1 at the beginning
+                        new_embeddings = {}
+                        new_embeddings[keys[0]] = embeddings1  # First position for video1
+                        new_embeddings[keys[0] + "_2"] = embeddings[keys[0]]  # Second position for video2
+                        embeddings = new_embeddings
+                        keys = list(embeddings.keys())
+                    elif embeddings2 is not None:
+                        # We have embeddings2, so the generated embedding is for video1
+                        # Add embeddings2 at the end
+                        new_embeddings = {}
+                        new_embeddings[keys[0]] = embeddings[keys[0]]  # First position for video1
+                        new_embeddings[keys[0] + "_2"] = embeddings2  # Second position for video2
+                        embeddings = new_embeddings
+                        keys = list(embeddings.keys())
+                
+                # Now we should have exactly 2 embeddings
+                if len(keys) >= 1:
+                    embedding1 = embeddings[keys[0]]
+                if len(keys) >= 2:
+                    embedding2 = embeddings[keys[1]]
+                
+                # Save new embeddings to vectors.csv
+                for youtube_id, embedding in embeddings.items():
+                    update_vectors_csv(youtube_id, embedding)
+                    
+            else:
+                embedding1 = embeddings1
+                embedding2 = embeddings2
 
+            logger.info("After embeddings")
+            
             # Save embeddings to vectors.csv
-            for youtube_id, embedding in embeddings.items():
-                update_vectors_csv(youtube_id, embedding)
+       
             
             if request:
                 request['status'] = 'comparing'
