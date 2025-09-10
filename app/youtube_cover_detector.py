@@ -340,6 +340,7 @@ async def process_videos(video_ids):
 def update_vectors_csv(youtube_id, embeddings):
     # check if the youtube_id is already in the csv file
     # create csv file if not exists
+    logger.info(f"Updating vectors.csv with {youtube_id}")
     VECTORS_CSV_FILE = config['VECTORS_CSV_FILE']
     if not os.path.exists(VECTORS_CSV_FILE):
         with open(VECTORS_CSV_FILE, 'w') as f:
@@ -350,6 +351,7 @@ def update_vectors_csv(youtube_id, embeddings):
         reader = csv.DictReader(f)
         for row in reader:
             vectors_csv[row['youtube_id']] = row['embeddings']
+    logger.info(f"Vectors CSV: {vectors_csv}")
     if youtube_id in vectors_csv:
         logger.debug(f"Youtube ID {youtube_id} already in vectors.csv, updating...")
         vectors_csv[youtube_id] = embeddings
