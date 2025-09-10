@@ -337,11 +337,14 @@ async def process_videos(video_ids):
 
 # apart from the current csv file, we will also save another csv file named "vectors.csv" with key the youtube id and value the embeddings
 
-def update_vectors_csv(youtube_id, embeddings):
+def update_vectors_csv(video_filepath, embeddings):
     # check if the youtube_id is already in the csv file
     # create csv file if not exists
     logger.info(f"=== UPDATE_VECTORS_CSV TRACE ===")
-    logger.info(f"Input youtube_id: '{youtube_id}' (type: {type(youtube_id)})")
+    logger.info(f"Input video_filepath: '{video_filepath}' (type: {type(video_filepath)})")
+    youtube_id = video_filepath.split('/')[-1].split('.')[0]
+    logger.info(f"Extracted youtube_id: '{youtube_id}'")
+    
     logger.info(f"Input embeddings type: {type(embeddings)}")
     logger.info(f"Input embeddings length: {len(embeddings) if hasattr(embeddings, '__len__') else 'N/A'}")
     
