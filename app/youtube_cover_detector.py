@@ -340,31 +340,50 @@ async def process_videos(video_ids):
 def update_vectors_csv(youtube_id, embeddings):
     # check if the youtube_id is already in the csv file
     # create csv file if not exists
-    logger.info(f"Updating vectors.csv with {youtube_id}")
+    logger.info(f"=== UPDATE_VECTORS_CSV TRACE ===")
+    logger.info(f"Input youtube_id: '{youtube_id}' (type: {type(youtube_id)})")
+    logger.info(f"Input embeddings type: {type(embeddings)}")
+    logger.info(f"Input embeddings length: {len(embeddings) if hasattr(embeddings, '__len__') else 'N/A'}")
+    
     VECTORS_CSV_FILE = config['VECTORS_CSV_FILE']
+    logger.info(f"VECTORS_CSV_FILE path: {VECTORS_CSV_FILE}")
+    
     if not os.path.exists(VECTORS_CSV_FILE):
+        logger.info("VECTORS_CSV_FILE does not exist, creating it...")
         with open(VECTORS_CSV_FILE, 'w') as f:
             f.write("youtube_id,embeddings\n")
+    else:
+        logger.info("VECTORS_CSV_FILE exists")
+    
     # read the csv file
     vectors_csv = {}
     with open(VECTORS_CSV_FILE, 'r') as f:
         reader = csv.DictReader(f)
         for row in reader:
             vectors_csv[row['youtube_id']] = row['embeddings']
-    logger.info(f"Vectors CSV: {vectors_csv}")
+    
+    logger.info(f"Current vectors_csv contents: {vectors_csv}")
+    logger.info(f"Current vectors_csv keys: {list(vectors_csv.keys())}")
+    
     if youtube_id in vectors_csv:
-        logger.debug(f"Youtube ID {youtube_id} already in vectors.csv, updating...")
+        logger.info(f"Youtube ID '{youtube_id}' already in vectors.csv, updating...")
         vectors_csv[youtube_id] = embeddings
     else:
-        logger.debug(f"Youtube ID {youtube_id} not in vectors.csv, adding...")
+        logger.info(f"Youtube ID '{youtube_id}' not in vectors.csv, adding...")
+        vectors_csv[youtube_id] = embeddings
+
+    logger.info(f"Updated vectors_csv: {vectors_csv}")
+    logger.info(f"About to write {len(vectors_csv)} entries to CSV")
 
     # Write the updated data back to the file
     with open(VECTORS_CSV_FILE, 'w', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=['youtube_id', 'embeddings'])
         writer.writeheader()
         for yt_id, emb in vectors_csv.items():
-            logger.info(f"Writing {yt_id} to vectors.csv")
+            logger.info(f"Writing youtube_id: '{yt_id}' to vectors.csv")
             writer.writerow({'youtube_id': yt_id, 'embeddings': emb})
+    
+    logger.info(f"=== END UPDATE_VECTORS_CSV TRACE ===")
 
 def read_compared_videos():
     compared_videos = []
@@ -567,7 +586,7 @@ class CoverDetector:
                 request['progress'] = 60
                 active_tasks[request['id']] = request
             
-            # Generate embeddings
+            # Generate embedding
             logger.info("Before embeddings")
             embeddings = _generate_embeddings_from_filepaths(wav_path1, wav_path2)
             logger.info("After embeddings")
