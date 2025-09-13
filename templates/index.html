@@ -351,7 +351,7 @@
             padding: 8px 12px;
             border-radius: 4px;
             margin-bottom: 12px;
-            font-size: 0.9em;
+            font-size: 0.9em !important;
             color: #666;
             border-left: 3px solid #2196F3;
         }
@@ -361,7 +361,7 @@
             padding: 8px 12px;
             border-radius: 4px;
             margin-bottom: 12px;
-            font-size: 0.9em;
+            font-size: 0.9em !important;
             color: #666;
             border-left: 3px solid #2196F3;
         }
@@ -375,7 +375,7 @@
             padding: 8px 12px;
             border-radius: 4px;
             margin-bottom: 12px;
-            font-size: 0.9em;
+            font-size: 0.9em !important;
             color: #666;
             border-left: 3px solid #4CAF50;
         }
@@ -471,7 +471,7 @@
             }
 
             .compared-video-entry {
-                font-size: 0.9em;
+                font-size: 0.9em !important;
             }
 
             body {
@@ -584,7 +584,7 @@
             }
 
             .precision-stat, .recall-stat {
-                font-size: 0.9em;
+                font-size: 0.9em !important;
                 margin: 5px 0;
             }
 
@@ -624,7 +624,7 @@
             }
 
             .result-text, .confidence-text {
-                font-size: 0.9em;
+                font-size: 0.9em !important;
             }
 
             .metrics-container {
@@ -829,7 +829,7 @@
             color: #2196F3;
             font-style: italic;
             margin-left: 8px;
-            font-size: 0.9em;
+            font-size: 0.9em !important;
         }
 
         /* Add styles for main result feedback */
@@ -865,7 +865,7 @@
 
         .pagination-info {
             margin-bottom: 10px;
-            font-size: 0.9em;
+            font-size: 0.9em !important;
             color: #666;
         }
 
@@ -883,7 +883,7 @@
             color: #333;
             cursor: pointer;
             border-radius: 4px;
-            font-size: 0.9em;
+            font-size: 0.9em !important;
             transition: all 0.2s;
         }
 
@@ -914,7 +914,7 @@
         .stats-link {
             color: #2196F3;
             text-decoration: none;
-            font-size: 0.9em;
+            font-size: 0.9em !important;
             cursor: pointer;
             transition: color 0.2s;
         }
@@ -925,66 +925,141 @@
         }
 
         .stats-24h {
-            background: #e3f2fd;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            border-left: 4px solid #2196F3;
+            margin-bottom: 20px;
         }
 
-        .stats-24h h3 {
-            margin: 0 0 10px 0;
-            color: #1976D2;
-            font-size: 1.1em;
+        .stats-24h .queue-status {
+            background-color: #f0f4f8;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin: 15px 15px 15px 15px;
+            color: #555;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .stats-24h #stats-content {
+            padding: 0;
+        }
+
+        .stats-24h .precision-stat {
+            background-color: #f5f5f5;
+            padding: 8px 12px;
+            border-radius: 4px;
+            margin-bottom: 12px;
+            font-size: 0.9em !important;
+            color: #666;
+            border-left: 3px solid #2196F3;
+        }
+
+        .stats-24h .recall-stat {
+            background-color: #f5f5f5;
+            padding: 8px 12px;
+            border-radius: 4px;
+            margin-bottom: 12px;
+            font-size: 0.9em !important;
+            color: #666;
+            border-left: 3px solid #4CAF50;
+        }
+
+        .stats-24h .queue-status {
+            background-color: #f0f4f8;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin: 15px 15px 15px 15px;
+            color: #555;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
         .stats-24h .stat-item {
-            margin: 8px 0;
-            font-size: 0.9em;
-            color: #333;
+            margin: 10px 0;
+            font-size: 1em;
+            color: #444;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 5px;
+            border-bottom: 1px dashed #eee;
+        }
+
+        .stats-24h .stat-item:last-child {
+            border-bottom: none;
         }
 
         .stats-24h .stat-value {
             font-weight: bold;
-            color: #1976D2;
+            color: #2196F3;
+            text-align: right;
+        }
+
+        .confidence-very-high {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+
+        .confidence-high {
+            color: #8BC34A;
+            font-weight: bold;
+        }
+
+        .confidence-medium {
+            color: #FF9800;
+            font-weight: bold;
+        }
+
+        .confidence-low {
+            color: #F44336;
+            font-weight: bold;
         }
 
         .stats-tabs {
             display: flex;
-            gap: 2px;
-            background-color: #f5f5f5;
+            gap: 4px;
+            background-color: #e0e0e0;
             border-radius: 8px;
-            padding: 4px;
+            padding: 3px;
             margin-bottom: 20px;
             width: 100%;
-            border: 2px solid #2196F3;
+            border: 1px solid #ccc;
         }
 
         .stats-tab {
             flex: 1;
-            padding: 12px 20px;
+            padding: 10px 18px;
             border-radius: 6px;
             cursor: pointer;
             font-weight: 600;
             transition: all 0.3s ease;
             color: #666;
-            background-color: #f8f9fa;
-            border: 1px solid #e0e0e0;
+            background-color: transparent;
+            border: 1px solid transparent;
             text-align: center;
             box-sizing: border-box;
+            position: relative;
+            top: 0;
         }
 
         .stats-tab.active {
             background-color: #4a5568;
             color: white;
-            border: 1px solid #2d3748;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            border-color: #2d3748;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            transform: translateY(-1px);
         }
 
         .stats-tab:hover:not(.active) {
-            background-color: #e2e8f0;
-            color: #2d3748;
-            border: 1px solid #cbd5e0;
+            background-color: #f8f9fa;
+            color: #333;
+            border-color: #ccc;
+            transform: translateY(-0.5px);
+        }
+
+        .stats-tab:active:not(.active) {
+            transform: translateY(0);
+            box-shadow: none;
         }
 
         .hidden {
@@ -1030,9 +1105,12 @@
                     <button class="stats-tab" id="24h-stats-tab" onclick="show24hStats()">Last 24h</button>
                 </div>
                 <div id="stats-24h" class="stats-24h hidden">
-                    <h3>Last 24 Hours Statistics</h3>
+                    <div class="queue-status">
+                        <span id="completed-count-24h">0</span> comparisons done. Queue: <span id="queue-count-24h">0</span> pending
+                    </div>
                     <div id="stats-content"></div>
-                    <button class="stats-tab" onclick="showAllStats()" style="margin-top: 10px; display: inline-block; background-color: #f5f5f5; border: 1px solid #ddd;">← Back to videos</button>
+                    <div id="24h-videos-list"></div>
+                    <div id="24h-pagination" class="pagination"></div>
                 </div>
                 <div id="normal-view">
                     <div class="queue-status">
@@ -1321,6 +1399,20 @@
             }
 
             return confidence;
+        }
+
+        function getConfidenceClass(score) {
+            const numScore = parseFloat(score);
+            
+            if (numScore < 0.1) {
+                return "confidence-very-high";
+            } else if (numScore >= 0.1 && numScore < 0.2) {
+                return "confidence-low";
+            } else if (numScore >= 0.2) {
+                return "confidence-medium";
+            } else {
+                return "confidence-high";
+            }
         }
 
         function calculatePrecision(comparedVideos) {
@@ -1923,10 +2015,24 @@
                     return videoDate >= yesterday;
                 });
                 
+                // Store 24h videos globally for pagination
+                all24hVideos = recent24h;
+                current24hPage = 1;
+                
+                // Update queue status
+                const queueStatusResponse = await fetch(`${API_URL}/queue-status`);
+                const queueData = await queueStatusResponse.json();
+                const currentQueueCount = queueData.pending_comparisons || 0;
+                
+                document.getElementById('completed-count-24h').textContent = recent24h.length;
+                document.getElementById('queue-count-24h').textContent = currentQueueCount;
+                
                 const statsContent = document.getElementById('stats-content');
                 
                 if (recent24h.length === 0) {
                     statsContent.innerHTML = '<div class="stat-item">No comparisons in the last 24 hours</div>';
+                    document.getElementById('24h-videos-list').innerHTML = '';
+                    document.getElementById('24h-pagination').innerHTML = '';
                     return;
                 }
                 
@@ -1944,51 +2050,161 @@
                 const okFeedback = recent24h.filter(v => v.feedback === 'ok').length;
                 const notOkFeedback = recent24h.filter(v => v.feedback === 'not-ok').length;
                 
-                let html = `
-                    <div class="stat-item">
-                        <strong>Total Comparisons:</strong> <span class="stat-value">${totalComparisons}</span>
-                    </div>
-                    <div class="stat-item">
-                        <strong>Covers Found:</strong> <span class="stat-value">${covers}</span> 
-                        | <strong>Not Covers:</strong> <span class="stat-value">${notCovers}</span>
-                    </div>
-                    <div class="stat-item">
-                        <strong>User Feedback:</strong> <span class="stat-value">${feedbackVideos.length}</span> reviews 
-                        (✓ ${okFeedback} | ✗ ${notOkFeedback})
-                    </div>
-                `;
+                let html = '';
                 
                 if (precision24h !== null) {
-                    html += `
-                        <div class="stat-item">
-                            <strong>Precision (24h):</strong> 
-                            <span class="stat-value">${precision24h.precision}%</span> 
-                            (95% CI: ${precision24h.lowerBound}%-${precision24h.upperBound}%)
-                        </div>
-                    `;
+                    html += '<p class="precision-stat">Precision: ' + precision24h.precision + '% (95% CI: ' + precision24h.lowerBound + '%-' + precision24h.upperBound + '%) of ' + precision24h.totalPredictedCovers + ' predicted covers (' + precision24h.samples + ' reviews)</p>';
                 } else {
-                    html += '<div class="stat-item"><strong>Precision (24h):</strong> No predicted covers yet</div>';
+                    html += '<p class="precision-stat">Precision: No predicted covers yet</p>';
                 }
                 
                 if (recall24h !== null) {
-                    html += `
-                        <div class="stat-item">
-                            <strong>Recall (24h):</strong> 
-                            <span class="stat-value">${recall24h.recall}%</span> 
-                            (95% CI: ${recall24h.lowerBound}%-${recall24h.upperBound}%)
-                        </div>
-                    `;
+                    html += '<p class="recall-stat">Recall: ' + recall24h.recall + '% (95% CI: ' + recall24h.lowerBound + '%-' + recall24h.upperBound + '%) of ' + recall24h.samples + ' actual covers</p>';
                 } else {
-                    html += '<div class="stat-item"><strong>Recall (24h):</strong> No actual covers yet</div>';
+                    html += '<p class="recall-stat">Recall: No actual covers yet</p>';
                 }
                 
                 statsContent.innerHTML = html;
+                
+                // Load and display 24h videos with pagination
+                load24hVideosPage(1);
                 
             } catch (error) {
                 console.error('Error loading 24h stats:', error);
                 document.getElementById('stats-content').innerHTML = 
                     '<div class="stat-item">Error loading statistics</div>';
             }
+        }
+
+        // 24h video list and pagination variables
+        let current24hPage = 1;
+        const videosPerPage24h = 100;
+        let all24hVideos = [];
+
+        // Load 24h videos page
+        function load24hVideosPage(page) {
+            current24hPage = page;
+            const startIndex = (page - 1) * videosPerPage24h;
+            const endIndex = startIndex + videosPerPage24h;
+            const pageVideos = all24hVideos.slice(startIndex, endIndex);
+            
+            display24hVideos(pageVideos);
+            display24hPagination();
+        }
+
+        // Display 24h videos
+        function display24hVideos(videos) {
+            const container = document.getElementById('24h-videos-list');
+            
+            if (videos.length === 0) {
+                container.innerHTML = '<div class="no-videos">No videos found for this page.</div>';
+                return;
+            }
+            
+            // Clear container
+            container.innerHTML = '';
+            
+            videos.forEach(video => {
+                const videoId1 = extractVideoId(video.url1);
+                const videoId2 = extractVideoId(video.url2);
+                const confidence = getConfidenceText(video.score);
+                
+                const videoItem = document.createElement('div');
+                videoItem.className = 'compared-video-entry';
+                videoItem.innerHTML = `
+                    <div class="compared-thumbnails">
+                        <div class="thumbnail-group">
+                            <a href="${video.url1}" target="_blank" class="thumbnail-link">
+                                <img src="https://img.youtube.com/vi/${videoId1}/default.jpg" alt="Video 1 Thumbnail">
+                            </a>
+                            <div class="url-container">
+                                <button class="copy-url-btn" onclick="copyToClipboard('${video.url1}', this)">Copy URL</button>
+                            </div>
+                        </div>
+                        <div class="thumbnail-group">
+                            <a href="${video.url2}" target="_blank" class="thumbnail-link">
+                                <img src="https://img.youtube.com/vi/${videoId2}/default.jpg" alt="Video 2 Thumbnail">
+                            </a>
+                            <div class="url-container">
+                                <button class="copy-url-btn" onclick="copyToClipboard('${video.url2}', this)">Copy URL</button>
+                            </div>
+                        </div>
+                    </div>
+                    <p><strong>Result:</strong> <span class="result-text ${video.result === 'Cover' ? 'is-cover' : 'not-cover'}">${video.result}</span>${
+                        video.feedback === 'not-ok' 
+                            ? ` → <em class="corrected-result">${video.result === 'Cover' ? 'Not Cover' : 'Cover'}</em>` 
+                            : ''
+                    }</p>
+                    <p><strong>Confidence:</strong> <span class="confidence-text">${confidence}</span>${video.feedback === 'not-ok' ? ' <em class="corrected-note">Manual review</em>' : ''}</p>
+                    <div class="feedback-buttons">
+                        <button class="feedback-btn ok ${video.feedback === 'ok' ? 'selected' : ''}" 
+                                onclick="submitFeedback('${video.url1}', '${video.url2}', 'ok')">
+                            ✓ OK
+                        </button>
+                        <button class="feedback-btn not-ok ${video.feedback === 'not-ok' ? 'selected' : ''}"
+                                onclick="submitFeedback('${video.url1}', '${video.url2}', 'not-ok')">
+                            ✗ Not OK
+                        </button>
+                    </div>
+                `;
+                
+                container.appendChild(videoItem);
+            });
+        }
+
+        // Display 24h pagination
+        function display24hPagination() {
+            const totalPages = Math.ceil(all24hVideos.length / videosPerPage24h);
+            const container = document.getElementById('24h-pagination');
+            
+            if (totalPages <= 1) {
+                container.innerHTML = '';
+                return;
+            }
+            
+            let html = '<div class="pagination">';
+            
+            // Previous button
+            if (current24hPage > 1) {
+                html += '<button class="pagination-btn" onclick="load24hVideosPage(' + (current24hPage - 1) + ')">Previous</button>';
+            } else {
+                html += '<button class="pagination-btn" disabled>Previous</button>';
+            }
+            
+            // Page numbers
+            const startPage = Math.max(1, current24hPage - 2);
+            const endPage = Math.min(totalPages, current24hPage + 2);
+            
+            if (startPage > 1) {
+                html += '<button class="pagination-btn" onclick="load24hVideosPage(1)">1</button>';
+                if (startPage > 2) {
+                    html += '<span class="pagination-ellipsis">...</span>';
+                }
+            }
+            
+            for (let i = startPage; i <= endPage; i++) {
+                const isActive = i === current24hPage ? 'active' : '';
+                html += '<button class="pagination-btn ' + isActive + '" onclick="load24hVideosPage(' + i + ')">' + i + '</button>';
+            }
+            
+            if (endPage < totalPages) {
+                if (endPage < totalPages - 1) {
+                    html += '<span class="pagination-ellipsis">...</span>';
+                }
+                html += '<button class="pagination-btn" onclick="load24hVideosPage(' + totalPages + ')">' + totalPages + '</button>';
+            }
+            
+            // Next button
+            if (current24hPage < totalPages) {
+                html += '<button class="pagination-btn" onclick="load24hVideosPage(' + (current24hPage + 1) + ')">Next</button>';
+            } else {
+                html += '<button class="pagination-btn" disabled>Next</button>';
+            }
+            
+            html += '</div>';
+            html += '<div class="pagination-info">Page ' + current24hPage + ' of ' + totalPages + ' (' + all24hVideos.length + ' total)</div>';
+            
+            container.innerHTML = html;
         }
     </script>
 </body>
