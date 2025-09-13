@@ -903,6 +903,56 @@
             cursor: not-allowed;
         }
 
+        /* Stats toggle styles */
+        .stats-toggle {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .stats-link {
+            color: #2196F3;
+            text-decoration: none;
+            font-size: 0.9em;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .stats-link:hover {
+            color: #1976D2;
+            text-decoration: underline;
+        }
+
+        .stats-24h {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border-left: 4px solid #2196F3;
+        }
+
+        .stats-24h h3 {
+            margin: 0 0 10px 0;
+            color: #1976D2;
+            font-size: 1.1em;
+        }
+
+        .stats-24h .stat-item {
+            margin: 8px 0;
+            font-size: 0.9em;
+            color: #333;
+        }
+
+        .stats-24h .stat-value {
+            font-weight: bold;
+            color: #1976D2;
+        }
+
+        .hidden {
+            display: none;
+        }
+
     </style>
 </head>
 <body>
@@ -934,11 +984,21 @@
                 </div>
             </div>
             <div class="history-section">
-                <h2>Last analyzed videos</h2>
-                <div class="queue-status">
-                    <span id="completed-count">0</span> comparisons done. Queue: <span id="queue-count">0</span> pending
+                <div class="stats-toggle">
+                    <h2>Last analyzed videos</h2>
+                    <a href="#" id="stats-toggle-link" class="stats-link" onclick="toggleStats(event)">24h Stats</a>
                 </div>
-                <div id="compared-videos-list"></div>
+                <div id="stats-24h" class="stats-24h hidden">
+                    <h3>Last 24 Hours Statistics</h3>
+                    <div id="stats-content"></div>
+                    <a href="#" class="stats-link" onclick="toggleStats(event)" style="margin-top: 10px; display: inline-block;">← Back to videos</a>
+                </div>
+                <div id="normal-view">
+                    <div class="queue-status">
+                        <span id="completed-count">0</span> comparisons done. Queue: <span id="queue-count">0</span> pending
+                    </div>
+                    <div id="compared-videos-list"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -1774,6 +1834,108 @@
         function startQueueStatusPolling() {
             const QUEUE_POLL_INTERVAL = 10000; // 10 seconds
             setInterval(updateQueueStatus, QUEUE_POLL_INTERVAL);
+        }
+
+        // Toggle between normal view and 24-hour stats
+        function toggleStats(event) {
+            event.preventDefault();
+            const statsDiv = document.getElementById('stats-24h');
+            const normalView = document.getElementById('normal-view');
+            const toggleLink = document.getElementById('stats-toggle-link');
+            
+            if (statsDiv.classList.contains('hidden')) {
+                // Show 24h stats
+                statsDiv.classList.remove('hidden');
+                normalView.classList.add('hidden');
+                toggleLink.textContent = 'All Stats';
+                load24HourStats();
+            } else {
+                // Show normal view
+                statsDiv.classList.add('hidden');
+                normalView.classList.remove('hidden');
+                toggleLink.textContent = '24h Stats';
+            }
+        }
+
+        // Load and display 24-hour statistics
+        async function load24HourStats() {
+            try {
+                const allVideos = await fetchAllComparedVideos();
+                const now = new Date();
+                const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+                
+                // Filter videos from last 24 hours
+                const recent24h = allVideos.filter(video => {
+                    const videoDate = new Date(video.timestamp || video.date || '1970-01-01');
+                    return videoDate >= yesterday;
+                });
+                
+                const statsContent = document.getElementById('stats-content');
+                
+                if (recent24h.length === 0) {
+                    statsContent.innerHTML = '<div class="stat-item">No comparisons in the last 24 hours</div>';
+                    return;
+                }
+                
+                // Calculate 24h metrics
+                const precision24h = calculatePrecision(recent24h);
+                const recall24h = calculateRecall(recent24h);
+                
+                // Count total comparisons and covers in 24h
+                const totalComparisons = recent24h.length;
+                const covers = recent24h.filter(v => v.result === 'Cover').length;
+                const notCovers = totalComparisons - covers;
+                
+                // Count feedback in 24h
+                const feedbackVideos = recent24h.filter(v => v.feedback === 'ok' || v.feedback === 'not-ok');
+                const okFeedback = recent24h.filter(v => v.feedback === 'ok').length;
+                const notOkFeedback = recent24h.filter(v => v.feedback === 'not-ok').length;
+                
+                let html = `
+                    <div class="stat-item">
+                        <strong>Total Comparisons:</strong> <span class="stat-value">${totalComparisons}</span>
+                    </div>
+                    <div class="stat-item">
+                        <strong>Covers Found:</strong> <span class="stat-value">${covers}</span> 
+                        | <strong>Not Covers:</strong> <span class="stat-value">${notCovers}</span>
+                    </div>
+                    <div class="stat-item">
+                        <strong>User Feedback:</strong> <span class="stat-value">${feedbackVideos.length}</span> reviews 
+                        (✓ ${okFeedback} | ✗ ${notOkFeedback})
+                    </div>
+                `;
+                
+                if (precision24h !== null) {
+                    html += `
+                        <div class="stat-item">
+                            <strong>Precision (24h):</strong> 
+                            <span class="stat-value">${precision24h.precision}%</span> 
+                            (95% CI: ${precision24h.lowerBound}%-${precision24h.upperBound}%)
+                        </div>
+                    `;
+                } else {
+                    html += '<div class="stat-item"><strong>Precision (24h):</strong> No predicted covers yet</div>';
+                }
+                
+                if (recall24h !== null) {
+                    html += `
+                        <div class="stat-item">
+                            <strong>Recall (24h):</strong> 
+                            <span class="stat-value">${recall24h.recall}%</span> 
+                            (95% CI: ${recall24h.lowerBound}%-${recall24h.upperBound}%)
+                        </div>
+                    `;
+                } else {
+                    html += '<div class="stat-item"><strong>Recall (24h):</strong> No actual covers yet</div>';
+                }
+                
+                statsContent.innerHTML = html;
+                
+            } catch (error) {
+                console.error('Error loading 24h stats:', error);
+                document.getElementById('stats-content').innerHTML = 
+                    '<div class="stat-item">Error loading statistics</div>';
+            }
         }
     </script>
 </body>

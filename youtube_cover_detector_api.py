@@ -596,7 +596,7 @@ async def submit_feedback(request: Request):
         os.makedirs(os.path.dirname(csv_file), exist_ok=True)
         
         with open(csv_file, mode='w', newline='') as file:
-            writer = csv.DictWriter(file, fieldnames=['url1', 'url2', 'result', 'score', 'feedback', 'elapsed_time'])
+            writer = csv.DictWriter(file, fieldnames=['url1', 'url2', 'result', 'score', 'feedback', 'elapsed_time', 'ground_truth', 'timestamp'])
             writer.writeheader()
             writer.writerows(videos)
             logger.info(f"Successfully wrote {len(videos)} entries back to CSV")

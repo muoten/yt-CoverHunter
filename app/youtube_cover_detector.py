@@ -475,14 +475,14 @@ def read_compared_videos():
     compared_videos = []
     try:
         with open(CSV_FILE, mode='r', newline='') as file:
-            reader = csv.DictReader(file, fieldnames=['url1', 'url2', 'result', 'score', 'feedback', 'elapsed_time'])
+            reader = csv.DictReader(file, fieldnames=['url1', 'url2', 'result', 'score', 'feedback', 'elapsed_time', 'ground_truth', 'timestamp'])
             next(reader)  # Skip header row
             for row in reader:
                 compared_videos.append(row)
     except FileNotFoundError:
         logger.debug("CSV file not found. Creating a new file with headers.")
         with open(CSV_FILE, mode='w', newline='') as file:
-            writer = csv.DictWriter(file, fieldnames=['url1', 'url2', 'result', 'score', 'feedback', 'elapsed_time'])
+            writer = csv.DictWriter(file, fieldnames=['url1', 'url2', 'result', 'score', 'feedback', 'elapsed_time', 'ground_truth', 'timestamp'])
             writer.writeheader()
     return compared_videos
 
@@ -519,14 +519,16 @@ def write_compared_video(url1: str, url2: str, result: str, score: float, elapse
         
         # Write the new comparison result
         with open(config['SCORES_CSV_FILE'], 'a', newline='') as f:
-            writer = csv.DictWriter(f, fieldnames=['url1', 'url2', 'result', 'score', 'feedback', 'elapsed_time'])
+            writer = csv.DictWriter(f, fieldnames=['url1', 'url2', 'result', 'score', 'feedback', 'elapsed_time', 'ground_truth', 'timestamp'])
             writer.writerow({
                 'url1': url1,
                 'url2': url2, 
                 'result': result,
                 'score': str(score),
                 'feedback': '',
-                'elapsed_time': str(elapsed_time) if elapsed_time is not None else ''
+                'elapsed_time': str(elapsed_time) if elapsed_time is not None else '',
+                'ground_truth': '',  # Empty for new entries
+                'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')
             })
     except Exception as e:
         logger.error(f"Error writing to CSV: {e}")
