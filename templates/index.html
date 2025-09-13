@@ -13,7 +13,7 @@
             max-width: 100%;
             margin: 0;
             padding: 20px;
-            background-color: #f5f5f5;
+            background-color: #f5f5f5 !important;
             color: #333;
             box-sizing: border-box;
         }
@@ -88,7 +88,7 @@
         .input-group label {
             display: block;
             margin-bottom: 5px;
-            color: #666;
+            color: #666 !important;
             font-weight: 500;
         }
 
@@ -103,7 +103,7 @@
             padding: 12px;
             margin: 2px 0 5px;
             border: 1px solid #ddd;
-            border-radius: 4px;
+            border-radius: 4px !important;
             box-sizing: border-box;
             padding-right: 35px;  /* Make room for the icon */
         }
@@ -133,7 +133,7 @@
             display: block;
             flex: none;
             background: linear-gradient(45deg, #2196F3, #1976D2);
-            color: white;
+            color: white !important;
             box-shadow: 0 2px 4px rgba(33, 150, 243, 0.2);
             transition: all 0.2s ease;
             border-radius: 8px;
@@ -141,7 +141,7 @@
         }
 
         .input-section > button:hover {
-            transform: translateY(-1px);
+            transform: translateY(-1px) !important;
             box-shadow: 0 4px 8px rgba(33, 150, 243, 0.3);
         }
 
@@ -162,12 +162,12 @@
 
         .preview-btn {
             background-color: #2196F3;
-            color: white;
+            color: white !important;
         }
 
         .check-btn {
             background-color: #4CAF50;
-            color: white;
+            color: white !important;
         }
 
         .thumbnails {
@@ -221,7 +221,7 @@
 
         .progress-status {
             margin: 10px 0;
-            color: #666;
+            color: #666 !important;
             font-style: italic;
             text-align: center;
         }
@@ -230,7 +230,7 @@
             margin-top: 10px;
             padding: 15px;
             border: 1px solid #ddd;
-            border-radius: 4px;
+            border-radius: 4px !important;
         }
 
         #detection-result h3 {
@@ -341,29 +341,31 @@
         }
 
         .feedback-btn:not(.selected) {
-            background-color: #f5f5f5;
+            background-color: #f5f5f5 !important;
             border-color: #ddd;
-            color: #666;
+            color: #666 !important;
         }
 
         .accuracy-stat {
-            background-color: #f5f5f5;
-            padding: 8px 12px;
-            border-radius: 4px;
-            margin-bottom: 12px;
+            background-color: #f5f5f5 !important;
+            padding: 8px 12px !important;
+            border-radius: 4px !important;
+            margin: 0 0 12px 0 !important;
             font-size: 0.9em !important;
-            color: #666;
-            border-left: 3px solid #2196F3;
+            color: #666 !important;
+            border-left: 3px solid #2196F3 !important;
+            line-height: normal !important;
         }
 
         .precision-stat {
-            background-color: #f5f5f5;
-            padding: 8px 12px;
-            border-radius: 4px;
-            margin-bottom: 12px;
+            background-color: #f5f5f5 !important;
+            padding: 8px 12px !important;
+            border-radius: 4px !important;
+            margin: 0 0 12px 0 !important;
             font-size: 0.9em !important;
-            color: #666;
-            border-left: 3px solid #2196F3;
+            color: #666 !important;
+            border-left: 3px solid #2196F3 !important;
+            line-height: normal !important;
         }
 
         .metrics-container {
@@ -371,13 +373,14 @@
         }
 
         .recall-stat {
-            background-color: #f5f5f5;
-            padding: 8px 12px;
-            border-radius: 4px;
-            margin-bottom: 12px;
+            background-color: #f5f5f5 !important;
+            padding: 8px 12px !important;
+            border-radius: 4px !important;
+            margin: 0 0 12px 0 !important;
             font-size: 0.9em !important;
-            color: #666;
-            border-left: 3px solid #4CAF50;
+            color: #666 !important;
+            border-left: 3px solid #4CAF50 !important;
+            line-height: normal !important;
         }
 
         .video-preview {
@@ -403,7 +406,7 @@
             bottom: 10px;
             right: 10px;
             background: rgba(0,0,0,0.7);
-            color: white;
+            color: white !important;
             border: none;
             border-radius: 50%;
             width: 32px;
@@ -527,7 +530,7 @@
             }
 
             .feedback-btn {
-                padding: 8px 12px;
+                padding: 8px 12px !important;
                 font-size: 14px;
             }
 
@@ -732,12 +735,12 @@
         .copy-url-btn {
             background: #f1f1f1;
             border: 1px solid #ddd;
-            border-radius: 4px;
+            border-radius: 4px !important;
             padding: 4px 8px;
             font-size: 12px;
             cursor: pointer;
             margin-left: 8px;
-            color: #666;
+            color: #666 !important;
             transition: all 0.2s;
         }
 
@@ -778,7 +781,7 @@
         .result-text {
             font-weight: 500;
             padding: 4px 8px;
-            border-radius: 4px;
+            border-radius: 4px !important;
             display: inline-block;
         }
 
@@ -788,8 +791,8 @@
         }
 
         .result-text.not-cover {
-            color: #666;
-            background-color: #f5f5f5;
+            color: #666 !important;
+            background-color: #f5f5f5 !important;
         }
 
         /* Update strikethrough styles for not-ok feedback */
@@ -809,8 +812,8 @@
 
         /* Keep Not Cover in grey when OK */
         .compared-video-entry:has(.feedback-btn.ok.selected) .result-text.not-cover {
-            color: #666;
-            background-color: #f5f5f5;
+            color: #666 !important;
+            background-color: #f5f5f5 !important;
         }
 
         /* Add styles for corrected result */
@@ -854,7 +857,7 @@
         .queue-status {
             background: #f0f4f8;
             padding: 10px;
-            border-radius: 4px;
+            border-radius: 4px !important;
             margin-bottom: 15px;
         }
     
@@ -866,7 +869,7 @@
         .pagination-info {
             margin-bottom: 10px;
             font-size: 0.9em !important;
-            color: #666;
+            color: #666 !important;
         }
 
         .pagination-buttons {
@@ -877,12 +880,12 @@
         }
 
         .pagination-btn {
-            padding: 8px 12px;
+            padding: 8px 12px !important;
             border: 1px solid #ddd;
             background: white;
             color: #333;
             cursor: pointer;
-            border-radius: 4px;
+            border-radius: 4px !important;
             font-size: 0.9em !important;
             transition: all 0.2s;
         }
@@ -894,7 +897,7 @@
 
         .pagination-btn.active {
             background: #2196F3;
-            color: white;
+            color: white !important;
             border-color: #2196F3;
         }
 
@@ -944,23 +947,25 @@
         }
 
         .stats-24h .precision-stat {
-            background-color: #f5f5f5;
-            padding: 8px 12px;
-            border-radius: 4px;
-            margin-bottom: 12px;
+            background-color: #f5f5f5 !important;
+            padding: 8px 12px !important;
+            border-radius: 4px !important;
+            margin: 0 0 12px 0 !important;
             font-size: 0.9em !important;
-            color: #666;
-            border-left: 3px solid #2196F3;
+            color: #666 !important;
+            border-left: 3px solid #2196F3 !important;
+            line-height: normal !important;
         }
 
         .stats-24h .recall-stat {
-            background-color: #f5f5f5;
-            padding: 8px 12px;
-            border-radius: 4px;
-            margin-bottom: 12px;
+            background-color: #f5f5f5 !important;
+            padding: 8px 12px !important;
+            border-radius: 4px !important;
+            margin: 0 0 12px 0 !important;
             font-size: 0.9em !important;
-            color: #666;
-            border-left: 3px solid #4CAF50;
+            color: #666 !important;
+            border-left: 3px solid #4CAF50 !important;
+            line-height: normal !important;
         }
 
         .stats-24h .queue-status {
@@ -1033,7 +1038,7 @@
             cursor: pointer;
             font-weight: 600;
             transition: all 0.3s ease;
-            color: #666;
+            color: #666 !important;
             background-color: transparent;
             border: 1px solid transparent;
             text-align: center;
@@ -1043,11 +1048,11 @@
         }
 
         .stats-tab.active {
-            background-color: #4a5568;
-            color: white;
-            border-color: #2d3748;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-            transform: translateY(-1px);
+            background-color: #4a5568 !important;
+            color: white !important;
+            border-color: #2d3748 !important;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2) !important;
+            transform: translateY(-1px) !important;
         }
 
         .stats-tab:hover:not(.active) {
@@ -1109,8 +1114,8 @@
                         <span id="completed-count-24h">0</span> comparisons done. Queue: <span id="queue-count-24h">0</span> pending
                     </div>
                     <div id="stats-content"></div>
-                    <div id="24h-videos-list"></div>
                     <div id="24h-pagination" class="pagination"></div>
+                    <div id="24h-videos-list"></div>
                 </div>
                 <div id="normal-view">
                     <div class="queue-status">
@@ -2157,12 +2162,11 @@
             const totalPages = Math.ceil(all24hVideos.length / videosPerPage24h);
             const container = document.getElementById('24h-pagination');
             
-            if (totalPages <= 1) {
-                container.innerHTML = '';
-                return;
-            }
+            // Always show pagination, even for 1 page
             
-            let html = '<div class="pagination">';
+            let html = '<div class="pagination-controls">';
+            html += '<div class="pagination-info">Page ' + current24hPage + ' of ' + totalPages + ' (' + all24hVideos.length + ' total)</div>';
+            html += '<div class="pagination-buttons">';
             
             // Previous button
             if (current24hPage > 1) {
@@ -2201,8 +2205,7 @@
                 html += '<button class="pagination-btn" disabled>Next</button>';
             }
             
-            html += '</div>';
-            html += '<div class="pagination-info">Page ' + current24hPage + ' of ' + totalPages + ' (' + all24hVideos.length + ' total)</div>';
+            html += '</div>'; // Close pagination-buttons
             
             container.innerHTML = html;
         }
