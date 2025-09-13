@@ -385,12 +385,15 @@ def get_vectors_csv():
     
     return vectors_csv
 
-def update_vectors_csv(video_filepath, embeddings):
+def update_vectors_csv(youtube_id, embeddings):
     # check if the youtube_id is already in the csv file
     # create csv file if not exists
     logger.info(f"=== UPDATE_VECTORS_CSV TRACE ===")
+    # get filepath from youtube_id
+    video_filepath = os.path.join(WAV_FOLDER, f"{youtube_id}.wav")
+    
     logger.info(f"Input video_filepath: '{video_filepath}' (type: {type(video_filepath)})")
-    youtube_id = video_filepath.split('/')[-1].split('.')[0]
+    #youtube_id = video_filepath.split('/')[-1].split('.')[0]
     logger.info(f"Extracted youtube_id: '{youtube_id}'")
     
     logger.info(f"Input embeddings type: {type(embeddings)}")
@@ -468,6 +471,23 @@ def update_vectors_csv(video_filepath, embeddings):
             
             embeddings_str = f'"[ {"  ".join(formatted_values)} ]"'
             writer.writerow({'youtube_id': yt_id, 'embeddings': embeddings_str})
+    
+    # Clean up video files after saving embeddings
+    try:
+        # Remove WAV file
+        wav_path = f"{WAV_FOLDER}/{youtube_id}.wav"
+        if os.path.exists(wav_path):
+            os.remove(wav_path)
+            logger.info(f"Cleaned up WAV file: {wav_path}")
+        
+        # Remove MP3 file if it exists
+        mp3_path = f"{WAV_FOLDER}/{youtube_id}.mp3"
+        if os.path.exists(mp3_path):
+            os.remove(mp3_path)
+            logger.info(f"Cleaned up MP3 file: {mp3_path}")
+            
+    except Exception as e:
+        logger.error(f"Error cleaning up video files for {youtube_id}: {e}")
     
     logger.info(f"=== END UPDATE_VECTORS_CSV TRACE ===")
 
