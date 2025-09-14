@@ -541,7 +541,7 @@ async def check_if_cover(request: VideoRequest):
         queued_tasks = comparison_queue.qsize()
         total_pending = queued_tasks + processing_tasks
         
-        if total_pending > 0:  # Block if anything is being processed or queued
+        if total_pending > 4:  # Block if anything is being processed or queued
             return {
                 "status": "busy",
                 "message": "System is busy. Please try again in a few minutes."
