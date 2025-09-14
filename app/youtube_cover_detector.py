@@ -376,7 +376,6 @@ def get_vectors_csv():
                 
                 embeddings_array = np.array(values, dtype=np.float32)
                 vectors_csv[row['youtube_id']] = embeddings_array
-                logger.debug(f"Successfully parsed embeddings for {row['youtube_id']} (length: {len(values)})")
                 
             except Exception as e:
                 logger.error(f"Error parsing embeddings for {row['youtube_id']}: {e}")
