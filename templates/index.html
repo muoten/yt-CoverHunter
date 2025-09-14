@@ -2022,7 +2022,7 @@
                 // Update queue status
                 const queueStatusResponse = await fetch(`${API_URL}/queue-status`);
                 const queueData = await queueStatusResponse.json();
-                const currentQueueCount = queueData.pending_comparisons || 0;
+                const currentQueueCount = queueData.pending_tasks || 0;
                 
                 document.getElementById('completed-count-24h').textContent = recent24h.length;
                 document.getElementById('queue-count-24h').textContent = currentQueueCount;
