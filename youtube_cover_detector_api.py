@@ -50,6 +50,11 @@ from app.background_worker import start_background_worker
 import psutil
 from app.utils.memory_logger import log_detailed_memory
 
+# Global cache for all videos
+_all_videos_cache = None
+_cache_timestamp = 0
+CACHE_DURATION = 30  # Cache for 30 seconds
+
 #First version that works! Though it takes more than 3 minutes to run in fly.dev free tier
 YT_DLP_USE_COOKIES = os.getenv('YT_DLP_USE_COOKIES', False)
 
@@ -229,8 +234,20 @@ async def get_compared_videos(
 @app.get("/api/compared-videos-all")
 async def get_all_compared_videos():
     """Get all videos for metrics calculation"""
-    videos = read_compared_videos()
-    return videos
+    global _all_videos_cache, _cache_timestamp
+    
+    current_time = time.time()
+    
+    # Return cached data if still fresh
+    if (_all_videos_cache is not None and 
+        current_time - _cache_timestamp < CACHE_DURATION):
+        return _all_videos_cache
+    
+    # Load fresh data
+    _all_videos_cache = read_compared_videos()
+    _cache_timestamp = current_time
+    
+    return _all_videos_cache
 
 @app.get("/api/queue-status")
 async def get_queue_status():
@@ -243,7 +260,12 @@ async def get_queue_status():
             
             get_queue_status.pending_tasks = len([t for t in shared_active_tasks.values() 
                                                 if t.get('status') != 'completed'])
-            get_queue_status.completed_comparisons = len(read_compared_videos())
+            # Optimized: count lines instead of loading all data
+            try:
+                with open(config['SCORES_CSV_FILE'], 'r') as file:
+                    get_queue_status.completed_comparisons = sum(1 for line in file) - 1  # Subtract header
+            except FileNotFoundError:
+                get_queue_status.completed_comparisons = 0
             get_queue_status.last_update = current_time
             
         return {
