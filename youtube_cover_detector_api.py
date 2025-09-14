@@ -49,6 +49,26 @@ from multiprocessing import Process, Queue, Manager
 from app.background_worker import start_background_worker
 import psutil
 from app.utils.memory_logger import log_detailed_memory
+def cleanup_completed_tasks():
+    """Remove completed tasks older than 5 minutes from shared_active_tasks"""
+    current_time = time.time()
+    tasks_to_remove = []
+    
+    for task_id, task in shared_active_tasks.items():
+        if task.get('status') == 'completed':
+            # Remove completed tasks older than 5 minutes
+            completed_time = task.get('completed_time', task.get('start_time', current_time))
+            if current_time - completed_time > 300:  # 5 minutes
+                tasks_to_remove.append(task_id)
+    
+    # Remove old completed tasks
+    for task_id in tasks_to_remove:
+        del shared_active_tasks[task_id]
+        logger.info(f'Cleaned up old completed task: {task_id}')
+    
+    return len(tasks_to_remove)
+
+
 
 # Global cache for all videos
 _all_videos_cache = None
@@ -467,6 +487,21 @@ app.include_router(api_router)
 async def get_docs():
     return get_swagger_ui_html(openapi_url="/openapi.json", title="API Documentation")
 
+
+@app.post("/api/cleanup-completed")
+async def cleanup_completed_tasks_endpoint():
+    """Manually clean up all completed tasks"""
+    try:
+        cleaned_count = cleanup_completed_tasks()
+        return {
+            "status": "success",
+            "cleaned_tasks": cleaned_count,
+            "message": f"Cleaned up {cleaned_count} completed tasks"
+        }
+    except Exception as e:
+        logger.error(f"Error cleaning up tasks: {str(e)}")
+        return {"error": str(e)}
+
 @app.get("/health")
 async def health_check():
     return {
@@ -545,6 +580,9 @@ async def get_comparison_status(request_id: str):
     task = shared_active_tasks.get(request_id)
     if task:
         if task['status'] == 'completed':
+            # Set completed_time if not already set
+            if 'completed_time' not in task:
+                task['completed_time'] = time.time()
             # Remove completed task from active tasks
             del shared_active_tasks[request_id]
         else:

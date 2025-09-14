@@ -55,6 +55,7 @@ def process_queue_forever(queue, active_tasks):
                     request['result'] = result
                     request['progress'] = 100
                     request['message'] = 'Analysis complete'
+                    request['completed_time'] = time.time()  # Add completion timestamp
                     active_tasks[request['id']] = request
                     logger.info(f"Request {request['id']} completed with result: {result}")
                     
