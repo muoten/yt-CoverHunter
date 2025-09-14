@@ -2008,6 +2008,13 @@
                     return videoDate >= yesterday;
                 });
                 
+                // Sort 24h videos to match main view order (reverse chronological)
+                all24hVideos = recent24h.sort((a, b) => {
+                    const dateA = new Date(a.timestamp || a.date || '1970-01-01');
+                    const dateB = new Date(b.timestamp || b.date || '1970-01-01');
+                    return dateB - dateA; // Newest first (same as main view)
+                });
+                
                 // Store 24h videos globally for pagination
                 all24hVideos = recent24h;
                 current24hPage = 1;
