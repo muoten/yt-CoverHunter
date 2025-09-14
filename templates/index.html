@@ -1544,6 +1544,8 @@
 
             // Calculate and display precision and recall using all videos for metrics
             fetchAllComparedVideos().then(allVideos => {
+                // Store globally for 24h view to reuse
+                window.allComparedVideos = allVideos;
                 const precision = calculatePrecision(allVideos);
                 const recall = calculateRecall(allVideos);
             
@@ -1998,7 +2000,15 @@
         // Load and display 24-hour statistics
         async function load24HourStats() {
             try {
-                const allVideos = await fetchAllComparedVideos();
+                // Reuse data already loaded by main view (much faster)
+                let allVideos = window.allComparedVideos || [];
+                
+                // If no cached data, fetch it (fallback)
+                if (allVideos.length === 0) {
+                    allVideos = await fetchAllComparedVideos();
+                    window.allComparedVideos = allVideos; // Cache for next time
+                }
+                
                 const now = new Date();
                 const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
                 
@@ -2015,14 +2025,10 @@
                     return dateB - dateA; // Newest first (same as main view)
                 });
                 
-                // Store 24h videos globally for pagination
-                all24hVideos = recent24h;
                 current24hPage = 1;
                 
-                // Update queue status
-                const queueStatusResponse = await fetch(`${API_URL}/queue-status`);
-                const queueData = await queueStatusResponse.json();
-                const currentQueueCount = queueData.pending_tasks || 0;
+                // Reuse queue count from main view (no API call needed)
+                const currentQueueCount = parseInt(document.getElementById('queue-count').textContent) || 0;
                 
                 document.getElementById('completed-count-24h').textContent = recent24h.length;
                 document.getElementById('queue-count-24h').textContent = currentQueueCount;
