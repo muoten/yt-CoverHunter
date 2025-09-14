@@ -1530,6 +1530,13 @@
                 html += `<button class="pagination-btn" disabled>Next</button>`;
             }
             
+            // Last page button
+            if (pagination.current_page < pagination.total_pages) {
+                html += `<button class="pagination-btn" onclick="goToPage(${pagination.total_pages})">Last</button>`;
+            } else {
+                html += `<button class="pagination-btn" disabled>Last</button>`;
+            }
+            
             html += '</div></div>';
             return html;
         }
@@ -2204,6 +2211,13 @@
                 html += '<button class="pagination-btn" onclick="load24hVideosPage(' + (current24hPage + 1) + ')">Next</button>';
             } else {
                 html += '<button class="pagination-btn" disabled>Next</button>';
+            }
+            
+            // Last page button
+            if (current24hPage < totalPages) {
+                html += '<button class="pagination-btn" onclick="load24hVideosPage(' + totalPages + ')">Last</button>';
+            } else {
+                html += '<button class="pagination-btn" disabled>Last</button>';
             }
             
             html += '</div>'; // Close pagination-buttons
