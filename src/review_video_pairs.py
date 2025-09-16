@@ -33,9 +33,10 @@ def review_video_pairs():
         return
 
     # Read the original file
-    log_message("Loading compared_videos.csv...")
+    filepath = "/data/compared_videos.csv"
+    log_message(f"Loading {filepath}...")
     try:
-        df = pd.read_csv("/data/compared_videos.csv", keep_default_na=False, na_values=[])
+        df = pd.read_csv(filepath, keep_default_na=False, na_values=[])
         log_message(f"Loaded {len(df)} rows from compared_videos.csv")
     except Exception as e:
         log_message(f"ERROR loading compared_videos.csv: {e}")
@@ -92,7 +93,7 @@ def review_video_pairs():
         log_message("Saving updated file...")
         try:
             # Use simple pandas to_csv - this is the most reliable approach
-            df.to_csv("/data/compared_videos.csv", index=False)
+            df.to_csv(filepath, index=False)
             log_message("File saved successfully")
             
             # Log summary of processed rows
