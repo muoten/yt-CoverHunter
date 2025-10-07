@@ -237,6 +237,8 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
             raise ValueError("Audio conversion failed")
         
         logger.info(f"Successfully created WAV file: {wav_path}")
+        logger.info(f"Removing mp3 file: {mp3_path}")
+        os.remove(mp3_path)
         return f"{youtube_id}.wav"
         
     except Exception as e:
