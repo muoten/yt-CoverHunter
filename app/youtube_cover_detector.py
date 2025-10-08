@@ -301,9 +301,11 @@ def _generate_embeddings_from_filepaths(audio_path1, audio_path2, embeddings1=No
     if os.system(command) != 0:
         raise ValueError("Embedding extraction failed")
 
-    # if embeddings were generated, we can remove the wav files
+    # if embeddings were generated, we can remove the wav and cqt.npy files
     os.system(f"rm {audio_path1}")
     os.system(f"rm {audio_path2}")
+    os.system(f"rm {audio_path1}.cqt.npy")
+    os.system(f"rm {audio_path2}.cqt.npy")
 
     # Path to the pickle file
     pickle_file_path = os.path.join(WAV_FOLDER, 'reference_embeddings.pkl')
