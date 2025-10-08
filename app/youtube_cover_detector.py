@@ -277,8 +277,10 @@ def _generate_embeddings_from_filepaths(audio_path1, audio_path2, embeddings1=No
 
     if embeddings1 is not None:
         audio_path1 = audio_path2
+        os.system(f"rm {audio_path1}")
     if embeddings2 is not None:
         audio_path2 = audio_path1
+        os.system(f"rm {audio_path2}")
 
     if embeddings1 is not None and embeddings2 is not None:
         return embeddings1, embeddings2
@@ -298,6 +300,10 @@ def _generate_embeddings_from_filepaths(audio_path1, audio_path2, embeddings1=No
     command = f"PYTHONPATH={COVERHUNTER_FOLDER} python {COVERHUNTER_FOLDER}/tools/make_embeds.py {WAV_FOLDER} {MODEL_FOLDER}"
     if os.system(command) != 0:
         raise ValueError("Embedding extraction failed")
+
+    # if embeddings were generated, we can remove the wav files
+    os.system(f"rm {audio_path1}")
+    os.system(f"rm {audio_path2}")
 
     # Path to the pickle file
     pickle_file_path = os.path.join(WAV_FOLDER, 'reference_embeddings.pkl')
