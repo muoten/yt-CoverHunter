@@ -18,7 +18,7 @@ primary_region = 'fra'
 
 
 [[vm]]
-  size = "shared-cpu-4x"
+  size = "performance-2x"
   memory = '4096mb'
 
 [mounts]
