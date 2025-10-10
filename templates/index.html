@@ -1561,13 +1561,13 @@
             if (precision !== null) {
                 metricsHtml += `<p class="precision-stat">Precision: ${precision.precision}% (95% CI: ${precision.lowerBound}%-${precision.upperBound}%) of ${precision.totalPredictedCovers} predicted covers (${precision.samples} reviews)</p>`;
             } else {
-                metricsHtml += '<p class="precision-stat">Precision: No predicted covers yet</p>';
+                metricsHtml += '<p class="precision-stat">Precision: No predicted covers reviewed yet</p>';
             }
             
             if (recall !== null) {
                 metricsHtml += `<p class="recall-stat">Recall: ${recall.recall}% (95% CI: ${recall.lowerBound}%-${recall.upperBound}%) of ${recall.samples} actual covers</p>`;
             } else {
-                metricsHtml += '<p class="recall-stat">Recall: No actual covers in feedback data yet</p>';
+                metricsHtml += '<p class="recall-stat">Recall: No actual covers reviewed yet</p>';
             }
             
                 metricsHtml += '</div>';
@@ -2068,13 +2068,13 @@
                 if (precision24h !== null) {
                     html += '<p class="precision-stat">Precision: ' + precision24h.precision + '% (95% CI: ' + precision24h.lowerBound + '%-' + precision24h.upperBound + '%) of ' + precision24h.totalPredictedCovers + ' predicted covers (' + precision24h.samples + ' reviews)</p>';
                 } else {
-                    html += '<p class="precision-stat">Precision: No predicted covers yet</p>';
+                    html += '<p class="precision-stat">Precision: No predicted covers reviewed yet</p>';
                 }
                 
                 if (recall24h !== null) {
                     html += '<p class="recall-stat">Recall: ' + recall24h.recall + '% (95% CI: ' + recall24h.lowerBound + '%-' + recall24h.upperBound + '%) of ' + recall24h.samples + ' actual covers</p>';
                 } else {
-                    html += '<p class="recall-stat">Recall: No actual covers yet</p>';
+                    html += '<p class="recall-stat">Recall: No actual covers reviewed yet</p>';
                 }
                 
                 statsContent.innerHTML = html;
