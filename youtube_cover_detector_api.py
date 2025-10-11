@@ -225,35 +225,69 @@ async def get_compared_videos(
     page: int = Query(1, ge=1, description="Page number (1-based)"),
     per_page: int = Query(100, ge=1, le=500, description="Items per page")
 ):
-    """Get history with pagination"""
-    videos = read_compared_videos()
-    total_count = len(videos)
-    
-    # Calculate pagination
-    start_index = (page - 1) * per_page
-    end_index = start_index + per_page
-    
-    # Get paginated results (reverse to show newest first)
-    paginated_videos = list(reversed(videos))[start_index:end_index]
-    
-    total_pages = (total_count + per_page - 1) // per_page
-    
-    return {
-        "videos": paginated_videos,
-        "pagination": {
-            "current_page": page,
-            "per_page": per_page,
-            "total_count": total_count,
-            "total_pages": total_pages,
-            "has_prev": page > 1,
-            "has_next": page < total_pages
+    """Get history with true pagination - only reads needed lines from CSV"""
+    try:
+        # First, get total count efficiently without loading all data
+        total_count = 0
+        try:
+            with open(config['SCORES_CSV_FILE'], 'r') as file:
+                total_count = sum(1 for line in file) - 1  # Subtract header
+        except FileNotFoundError:
+            return {"videos": [], "pagination": {"current_page": 1, "per_page": per_page, "total_count": 0, "total_pages": 0, "has_prev": False, "has_next": False}}
+        
+        # Calculate pagination
+        total_pages = (total_count + per_page - 1) // per_page
+        
+        # For reverse pagination (newest first), we need to calculate the actual line numbers
+        # Since we want newest first, we read from the end of the file
+        start_line_from_end = (page - 1) * per_page
+        end_line_from_end = start_line_from_end + per_page
+        
+        # Read only the specific lines we need (optimized approach)
+        paginated_videos = []
+        try:
+            # For reverse pagination, we need to read from the end of the file
+            # Calculate the actual line numbers we need (from the end)
+            start_line = max(0, total_count - end_line_from_end)
+            end_line = total_count - start_line_from_end
+            
+            with open(config['SCORES_CSV_FILE'], 'r') as file:
+                reader = csv.DictReader(file, fieldnames=['url1', 'url2', 'result', 'score', 'feedback', 'elapsed_time', 'ground_truth', 'timestamp'])
+                next(reader)  # Skip header
+                
+                # Skip to the start line
+                for i, row in enumerate(reader):
+                    if i >= start_line:
+                        if i < end_line:
+                            paginated_videos.append(row)
+                        else:
+                            break
+                
+                # Reverse to show newest first
+                paginated_videos = list(reversed(paginated_videos))
+                
+        except FileNotFoundError:
+            paginated_videos = []
+        
+        return {
+            "videos": paginated_videos,
+            "pagination": {
+                "current_page": page,
+                "per_page": per_page,
+                "total_count": total_count,
+                "total_pages": total_pages,
+                "has_prev": page > 1,
+                "has_next": page < total_pages
+            }
         }
-    }
+    except Exception as e:
+        logger.error(f"Error in paginated endpoint: {e}")
+        return {"error": str(e)}
 
 
 @app.get("/api/compared-videos-all")
 async def get_all_compared_videos():
-    """Get all videos for metrics calculation"""
+    """Get all videos for metrics calculation - optimized with caching"""
     global _all_videos_cache, _cache_timestamp
     
     current_time = time.time()
@@ -263,7 +297,7 @@ async def get_all_compared_videos():
         current_time - _cache_timestamp < CACHE_DURATION):
         return _all_videos_cache
     
-    # Load fresh data
+    # Load fresh data (this still loads all data, but it's cached)
     _all_videos_cache = read_compared_videos()
     _cache_timestamp = current_time
     
