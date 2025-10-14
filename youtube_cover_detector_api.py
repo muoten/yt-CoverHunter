@@ -75,6 +75,49 @@ _all_videos_cache = None
 _cache_timestamp = 0
 CACHE_DURATION = 30  # Cache for 30 seconds
 
+def cleanup_old_wav_files(max_age_hours: int = 1):
+    """Remove WAV files older than specified hours to prevent disk space issues"""
+    wav_folder = config['WAV_FOLDER']
+    if not os.path.exists(wav_folder):
+        return
+    
+    current_time = time.time()
+    max_age_seconds = max_age_hours * 3600  # Convert hours to seconds
+    removed_count = 0
+    total_size_freed = 0
+    
+    try:
+        for filename in os.listdir(wav_folder):
+            file_path = os.path.join(wav_folder, filename)
+            
+            # Only process WAV files
+            if not filename.endswith('.wav'):
+                continue
+            
+            try:
+                # Get file modification time
+                file_mtime = os.path.getmtime(file_path)
+                file_age = current_time - file_mtime
+                
+                # Check if file is older than max_age_hours
+                if file_age > max_age_seconds:
+                    file_size = os.path.getsize(file_path)
+                    os.remove(file_path)
+                    removed_count += 1
+                    total_size_freed += file_size
+                    logger.info(f"Removed old WAV file: {filename} (age: {file_age/3600:.1f}h, size: {file_size/1024/1024:.1f}MB)")
+                    
+            except Exception as e:
+                logger.error(f"Error processing file {filename}: {e}")
+        
+        if removed_count > 0:
+            logger.info(f"WAV cleanup completed: removed {removed_count} files, freed {total_size_freed/1024/1024:.1f}MB")
+        else:
+            logger.debug("WAV cleanup completed: no old files found")
+            
+    except Exception as e:
+        logger.error(f"Error during WAV cleanup: {e}")
+
 #First version that works! Though it takes more than 3 minutes to run in fly.dev free tier
 YT_DLP_USE_COOKIES = os.getenv('YT_DLP_USE_COOKIES', False)
 
@@ -349,6 +392,27 @@ async def startup_event():
     logger.info("Starting queue processor...")
     start_background_worker(comparison_queue, shared_active_tasks)
     logger.info("Queue processor started")
+    
+    # Start periodic cleanup task
+    asyncio.create_task(periodic_cleanup())
+
+async def periodic_cleanup():
+    """Periodic cleanup task that runs every 15 minutes"""
+    while True:
+        try:
+            await asyncio.sleep(900)  # Wait 15 minutes
+            
+            # Clean up completed tasks
+            cleaned_tasks = cleanup_completed_tasks()
+            if cleaned_tasks > 0:
+                logger.info(f"Periodic cleanup: removed {cleaned_tasks} completed tasks")
+            
+            # Clean up old WAV files (older than 12 hours)
+            cleanup_old_wav_files(max_age_hours=1)
+            
+        except Exception as e:
+            logger.error(f"Error in periodic cleanup: {e}")
+            await asyncio.sleep(60)  # Wait 1 minute before retrying
 
 
 # Store results in memory
@@ -536,17 +600,66 @@ async def cleanup_completed_tasks_endpoint():
         logger.error(f"Error cleaning up tasks: {str(e)}")
         return {"error": str(e)}
 
+@app.post("/api/cleanup-wav-files")
+async def cleanup_wav_files_endpoint(max_age_hours: int = 12):
+    """Manually clean up old WAV files"""
+    try:
+        cleanup_old_wav_files(max_age_hours)
+        return {
+            "status": "success",
+            "message": f"WAV cleanup completed for files older than {max_age_hours} hours"
+        }
+    except Exception as e:
+        logger.error(f"Error cleaning up WAV files: {str(e)}")
+        return {"error": str(e)}
+
 @app.get("/health")
 async def health_check():
-    return {
-        "status": "healthy",
-        "api_version": "1.0",
-        "endpoints": [
-            "/api/detect-cover",
-            "/api/detection-status/{task_id}",
-            "/api/get-thumbnails"
-        ]
-    }
+    """Health check endpoint with WAV file information"""
+    try:
+        # Get disk usage for WAV folder
+        wav_folder = config['WAV_FOLDER']
+        disk_usage = psutil.disk_usage(wav_folder)
+        
+        # Count WAV files
+        wav_count = 0
+        wav_total_size = 0
+        if os.path.exists(wav_folder):
+            for filename in os.listdir(wav_folder):
+                if filename.endswith('.wav'):
+                    wav_count += 1
+                    file_path = os.path.join(wav_folder, filename)
+                    try:
+                        wav_total_size += os.path.getsize(file_path)
+                    except:
+                        pass
+        
+        return {
+            "status": "healthy",
+            "api_version": "1.0",
+            "wav_files": {
+                "count": wav_count,
+                "total_size": f"{wav_total_size / 1024 / 1024:.1f}MB",
+                "folder": wav_folder
+            },
+            "disk": {
+                "total": f"{disk_usage.total / 1024 / 1024 / 1024:.1f}GB",
+                "free": f"{disk_usage.free / 1024 / 1024 / 1024:.1f}GB",
+                "used_percent": f"{(disk_usage.used / disk_usage.total) * 100:.1f}%"
+            },
+            "endpoints": [
+                "/api/detect-cover",
+                "/api/detection-status/{task_id}",
+                "/api/get-thumbnails"
+            ]
+        }
+    except Exception as e:
+        logger.error(f"Error in health check: {e}")
+        return {
+            "status": "healthy",
+            "api_version": "1.0",
+            "error": str(e)
+        }
 
 @app.post("/api/check-if-cover")
 async def check_if_cover(request: VideoRequest):
