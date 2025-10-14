@@ -75,7 +75,7 @@ _all_videos_cache = None
 _cache_timestamp = 0
 CACHE_DURATION = 30  # Cache for 30 seconds
 
-def cleanup_old_wav_files(max_age_hours: int = 1):
+def cleanup_old_wav_files(max_age_hours: int = 2):
     """Remove WAV files older than specified hours to prevent disk space issues"""
     wav_folder = config['WAV_FOLDER']
     if not os.path.exists(wav_folder):
@@ -117,6 +117,35 @@ def cleanup_old_wav_files(max_age_hours: int = 1):
             
     except Exception as e:
         logger.error(f"Error during WAV cleanup: {e}")
+
+def cleanup_chrome_user_data():
+    """Remove old Chrome user data directory to free up disk space"""
+    chrome_data_path = "/tmp/chrome_user_data"
+    
+    if not os.path.exists(chrome_data_path):
+        logger.debug("Chrome user data directory not found")
+        return
+    
+    try:
+        # Get directory size before removal
+        total_size = 0
+        for dirpath, dirnames, filenames in os.walk(chrome_data_path):
+            for filename in filenames:
+                file_path = os.path.join(dirpath, filename)
+                try:
+                    total_size += os.path.getsize(file_path)
+                except:
+                    pass
+        
+        # Remove the entire directory
+        import shutil
+        shutil.rmtree(chrome_data_path)
+        
+        size_mb = total_size / 1024 / 1024
+        logger.info(f"Removed Chrome user data directory: {chrome_data_path} (freed {size_mb:.1f}MB)")
+        
+    except Exception as e:
+        logger.error(f"Error removing Chrome user data directory: {e}")
 
 #First version that works! Though it takes more than 3 minutes to run in fly.dev free tier
 YT_DLP_USE_COOKIES = os.getenv('YT_DLP_USE_COOKIES', False)
@@ -407,8 +436,11 @@ async def periodic_cleanup():
             if cleaned_tasks > 0:
                 logger.info(f"Periodic cleanup: removed {cleaned_tasks} completed tasks")
             
-            # Clean up old WAV files (older than 12 hours)
-            cleanup_old_wav_files(max_age_hours=1)
+            # Clean up old WAV files (older than 2 hours)
+            cleanup_old_wav_files(max_age_hours=2)
+            
+            # Clean up Chrome user data directory
+            cleanup_chrome_user_data()
             
         except Exception as e:
             logger.error(f"Error in periodic cleanup: {e}")
@@ -611,6 +643,19 @@ async def cleanup_wav_files_endpoint(max_age_hours: int = 12):
         }
     except Exception as e:
         logger.error(f"Error cleaning up WAV files: {str(e)}")
+        return {"error": str(e)}
+
+@app.post("/api/cleanup-chrome-data")
+async def cleanup_chrome_data_endpoint():
+    """Manually clean up Chrome user data directory"""
+    try:
+        cleanup_chrome_user_data()
+        return {
+            "status": "success",
+            "message": "Chrome user data cleanup completed"
+        }
+    except Exception as e:
+        logger.error(f"Error cleaning up Chrome user data: {str(e)}")
         return {"error": str(e)}
 
 @app.get("/health")
