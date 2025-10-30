@@ -196,6 +196,13 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                 'preferredcodec': 'mp3',
             }],
             'outtmpl': f'{WAV_FOLDER}/{youtube_id}.%(ext)s',
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'web_embedded']
+                }
+            },
+            'geo_bypass': True,
+            'geo_bypass_country': 'US',
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -342,6 +349,13 @@ async def download_audio(youtube_id):
             'preferredcodec': 'mp3',
         }],
         'outtmpl': f'{WAV_FOLDER}/{youtube_id}.%(ext)s',
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'web_embedded']
+            }
+        },
+        'geo_bypass': True,
+        'geo_bypass_country': 'US',
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         await asyncio.to_thread(ydl.download, [f'https://www.youtube.com/watch?v={youtube_id}'])
