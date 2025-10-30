@@ -1,0 +1,35 @@
+name: Deploy to Fly.io
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      FLY_USE_DEPOT: "0"              # Use classic Fly remote builder
+      FLY_REMOTE_BUILDER_REGION: "fra"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Validate Fly config
+        run: |
+          flyctl version
+          flyctl config validate --config fly.toml
+
+      - name: Deploy (remote builder)
+        run: |
+          flyctl deploy \
+            --config fly.toml \
+            -a yt-coverhunter \
+            --remote-only \
+            --wait-timeout 30m
+
+
