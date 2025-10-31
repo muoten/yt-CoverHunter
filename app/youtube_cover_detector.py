@@ -875,6 +875,7 @@ class CoverDetector:
             if video_id1 in vectors_csv:
                 logger.info("Using existing embeddings for first video")
                 embeddings1 = vectors_csv[video_id1]
+                wav_path1 = None  # Not needed if using cached embeddings
             else:
                 embeddings1 = None
 
@@ -885,9 +886,15 @@ class CoverDetector:
                     request['progress'] = 25
                     active_tasks[request['id']] = request
             
-                # Add random delay to avoid rate limiting
-                delay = random.uniform(15, 60)
-                time.sleep(delay)  # random delay between downloads
+            # Add random delay to avoid rate limiting between downloads
+            # This delay MUST happen between downloads to avoid anti-bot detection
+            # Second video is more likely to be blocked because it's part of a detected pattern
+            # Use longer delay (60-120s) to reduce pattern detection
+            min_delay = max(_MIN_DOWNLOAD_DELAY * 2, 60)  # At least 60 seconds
+            max_delay = max(_MIN_DOWNLOAD_DELAY * 4, 120)  # Up to 120 seconds
+            delay = random.uniform(min_delay, max_delay)
+            logger.info(f"Waiting {delay:.1f}s between first and second video downloads to avoid anti-bot detection...")
+            await asyncio.sleep(delay)  # Use async sleep to avoid blocking event loop
             
             # Update progress for second video download
             if request:
