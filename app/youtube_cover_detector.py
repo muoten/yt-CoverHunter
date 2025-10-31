@@ -35,6 +35,10 @@ comparison_queue = asyncio.Queue()
 processing_tasks = {}
 active_tasks = {}
 
+# Anti-bot evasion: track recent downloads to implement cooldowns
+_last_download_time = 0
+_MIN_DOWNLOAD_DELAY = 30  # Minimum 30 seconds between downloads to avoid rate limits
+
 THRESHOLD = config['THRESHOLD']
 
 
@@ -97,7 +101,18 @@ def setup_logger():
 logger = setup_logger()
 
 def _generate_audio_from_youtube_id(youtube_id, request=None):
-    """Generate audio from YouTube ID with user agent rotation"""
+    """Generate audio from YouTube ID with user agent rotation and anti-bot evasion"""
+    
+    global _last_download_time
+    
+    # Anti-bot evasion: Add delay between downloads
+    current_time = time.time()
+    time_since_last = current_time - _last_download_time
+    if time_since_last < _MIN_DOWNLOAD_DELAY:
+        delay = _MIN_DOWNLOAD_DELAY - time_since_last
+        logger.info(f"Anti-bot cooldown: waiting {delay:.1f}s before next download...")
+        time.sleep(delay)
+    _last_download_time = time.time()
     
     # List of realistic user agents to rotate through
     user_agents = [
@@ -196,25 +211,85 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                 'preferredcodec': 'mp3',
             }],
             'outtmpl': f'{WAV_FOLDER}/{youtube_id}.%(ext)s',
-            'extractor_args': {
-                'youtube': {
-                    'player_client': ['android', 'web_embedded']
-                }
-            },
-            'geo_bypass': True,
-            'geo_bypass_country': 'US',
         }
         
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        # Dynamic client rotation for anti-bot evasion
+        # Try different client types in random order
+        client_options = [
+            ['android'],  # Mobile client
+            ['web'],  # Web client
+            ['web_embedded'],  # Embedded player
+            ['android', 'web_embedded'],  # Fallback chain
+            ['web', 'android'],  # Alternative chain
+        ]
+        
+        geo_countries = ['US', 'UK', 'CA', 'AU', 'DE']  # Rotate geo bypass
+        
+        last_error = None
+        max_retries = 3
+        
+        for attempt in range(max_retries):
+            # Select random client and geo for this attempt
+            selected_client = random.choice(client_options)
+            selected_geo = random.choice(geo_countries)
+            
+            ydl_opts['extractor_args'] = {
+                'youtube': {
+                    'player_client': selected_client
+                }
+            }
+            ydl_opts['geo_bypass'] = True
+            ydl_opts['geo_bypass_country'] = selected_geo
+            
+            logger.info(f"Attempt {attempt + 1}/{max_retries}: Using client {selected_client}, geo {selected_geo}")
+            
             try:
-                logger.info(f"Attempting download with best quality...")
-                ydl.download([f'https://www.youtube.com/watch?v={youtube_id}'])
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    try:
+                        logger.info(f"Attempting download with best quality...")
+                        ydl.download([f'https://www.youtube.com/watch?v={youtube_id}'])
+                        # Success! Break out of retry loop
+                        break
+                    except Exception as e:
+                        error_str = str(e)
+                        last_error = e
+                        logger.warning(f"Download failed (attempt {attempt + 1}): {error_str[:200]}")
+                        
+                        # If this looks like an anti-bot block, try next client immediately
+                        if "unavailable" in error_str.lower() or "private" in error_str.lower():
+                            if attempt < max_retries - 1:
+                                logger.info(f"Anti-bot block detected. Retrying immediately with different client...")
+                                continue
+                            else:
+                                # Last attempt failed, try worst quality as final fallback
+                                logger.info(f"Final attempt: trying worst quality...")
+                                ydl_opts['format'] = 'worstaudio/worst'
+                                try:
+                                    ydl.download([f'https://www.youtube.com/watch?v={youtube_id}'])
+                                    break  # Success with worst quality
+                                except Exception as e2:
+                                    raise e  # Re-raise original error
+                        else:
+                            # Non-anti-bot error, try worst quality
+                            logger.info(f"Trying worst quality format...")
+                            ydl_opts['format'] = 'worstaudio/worst'
+                            try:
+                                ydl.download([f'https://www.youtube.com/watch?v={youtube_id}'])
+                                break  # Success
+                            except Exception as e2:
+                                raise e  # Re-raise original error
             except Exception as e:
-                logger.error(f"Download failed with error: {str(e)}")
-                # Try alternate format if first attempt fails
-                logger.info(f"Retrying with worst quality...")
-                ydl_opts['format'] = 'worstaudio/worst'
-                ydl.download([f'https://www.youtube.com/watch?v={youtube_id}'])
+                last_error = e
+                if attempt < max_retries - 1:
+                    logger.info(f"Retrying immediately with different client...")
+                    continue
+                else:
+                    # All retries exhausted
+                    raise
+        
+        # If we get here without breaking, all retries failed
+        if last_error:
+            raise last_error
         
         # Convert to WAV
         mp3_path = f'{WAV_FOLDER}/{youtube_id}.mp3'
@@ -339,26 +414,57 @@ def prepare_cover_detection(youtube_url1, youtube_url2):
     
 
 async def download_audio(youtube_id):
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'quiet': True,
-        'external_downloader': 'aria2c',  # Use aria2c for faster downloads
-        'external_downloader_args': ['-x', '16', '-k', '1M'],  # Use 16 connections
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-        }],
-        'outtmpl': f'{WAV_FOLDER}/{youtube_id}.%(ext)s',
-        'extractor_args': {
-            'youtube': {
-                'player_client': ['android', 'web_embedded']
-            }
-        },
-        'geo_bypass': True,
-        'geo_bypass_country': 'US',
-    }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        await asyncio.to_thread(ydl.download, [f'https://www.youtube.com/watch?v={youtube_id}'])
+    # Dynamic client rotation for anti-bot evasion (same as sync version)
+    client_options = [
+        ['android'],
+        ['web'],
+        ['web_embedded'],
+        ['android', 'web_embedded'],
+        ['web', 'android'],
+    ]
+    geo_countries = ['US', 'UK', 'CA', 'AU', 'DE']
+    
+    last_error = None
+    max_retries = 3
+    
+    for attempt in range(max_retries):
+        selected_client = random.choice(client_options)
+        selected_geo = random.choice(geo_countries)
+        
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'quiet': True,
+            'external_downloader': 'aria2c',
+            'external_downloader_args': ['-x', '16', '-k', '1M'],
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+            }],
+            'outtmpl': f'{WAV_FOLDER}/{youtube_id}.%(ext)s',
+            'extractor_args': {
+                'youtube': {
+                    'player_client': selected_client
+                }
+            },
+            'geo_bypass': True,
+            'geo_bypass_country': selected_geo,
+        }
+        
+        try:
+            logger.info(f"Async download attempt {attempt + 1}/{max_retries}: client {selected_client}, geo {selected_geo}")
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                await asyncio.to_thread(ydl.download, [f'https://www.youtube.com/watch?v={youtube_id}'])
+            break  # Success
+        except Exception as e:
+            last_error = e
+            error_str = str(e)
+            logger.warning(f"Async download failed (attempt {attempt + 1}): {error_str[:200]}")
+            if attempt < max_retries - 1:
+                logger.info(f"Retrying immediately with different client...")
+                continue
+    
+    if last_error and not os.path.exists(f'{WAV_FOLDER}/{youtube_id}.mp3'):
+        raise last_error
 
 async def process_videos(video_ids):
     tasks = [download_audio(video_id) for video_id in video_ids]
