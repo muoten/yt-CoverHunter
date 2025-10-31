@@ -10,8 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-      FLY_USE_DEPOT: "0"              # Use classic Fly remote builder
-      FLY_REMOTE_BUILDER_REGION: "fra"
+      FLY_USE_DEPOT: "0"              # Disable Depot, use classic Fly remote builder
+      FLY_REMOTE_BUILDER_REGION: "fra"  # Use Frankfurt region
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,12 +24,53 @@ jobs:
           flyctl version
           flyctl config validate --config fly.toml
 
-      - name: Deploy (remote builder)
+      - name: Cleanup stuck builders (if any)
+        continue-on-error: true
         run: |
-          flyctl deploy \
-            --config fly.toml \
-            -a yt-coverhunter \
-            --remote-only \
-            --wait-timeout 30m
+          echo "Checking for stuck builders..."
+          # List all fly builder apps and try to destroy any that might be stuck
+          flyctl apps list | grep "fly-builder" | awk '{print $1}' | while read app; do
+            echo "Attempting to destroy stuck builder: $app"
+            flyctl apps destroy "$app" --yes || true
+          done || echo "No stuck builders found or cleanup failed (continuing...)"
+
+      - name: Deploy to Fly.io (with retry)
+        run: |
+          set -e
+          MAX_RETRIES=3
+          RETRY_COUNT=0
+          
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            echo "Deployment attempt $((RETRY_COUNT + 1))/$MAX_RETRIES"
+            
+            if [ $RETRY_COUNT -gt 0 ]; then
+              BACKOFF=$((60 * RETRY_COUNT))  # 1min, 2min, 3min
+              echo "Waiting ${BACKOFF}s before retry..."
+              sleep $BACKOFF
+            fi
+            
+            # Explicitly disable Depot and use classic builder
+            if flyctl deploy \
+              --config fly.toml \
+              -a yt-coverhunter \
+              --remote-only \
+              --wait-timeout 45m; then
+              echo "Deployment successful!"
+              exit 0
+            else
+              RETRY_COUNT=$((RETRY_COUNT + 1))
+              if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                echo "Deployment failed, will retry..."
+                # Try to clean up any stuck builders
+                flyctl apps list | grep "fly-builder" | awk '{print $1}' | head -1 | while read app; do
+                  echo "Cleaning up builder: $app"
+                  flyctl apps destroy "$app" --yes || true
+                done || true
+              else
+                echo "Deployment failed after $MAX_RETRIES attempts"
+                exit 1
+              fi
+            fi
+          done
 
 
