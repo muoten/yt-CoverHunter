@@ -215,10 +215,14 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
         
         # Dynamic client rotation for anti-bot evasion
         # Try different client types in random order
+        # iOS and TV clients often bypass age-gate restrictions better
         client_options = [
+            ['ios'],  # iOS client - often bypasses age gates
             ['android'],  # Mobile client
+            ['tv_embedded'],  # TV client - good for age-restricted content
             ['web'],  # Web client
             ['web_embedded'],  # Embedded player
+            ['ios', 'android'],  # Mobile fallback chain
             ['android', 'web_embedded'],  # Fallback chain
             ['web', 'android'],  # Alternative chain
         ]
@@ -256,7 +260,11 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                         logger.warning(f"Download failed (attempt {attempt + 1}): {error_str[:200]}")
                         
                         # If this looks like an anti-bot block, try next client immediately
-                        if "unavailable" in error_str.lower() or "private" in error_str.lower():
+                        # Age-gate errors ("Sign in to confirm your age") are often anti-bot blocks
+                        if ("unavailable" in error_str.lower() or 
+                            "private" in error_str.lower() or 
+                            "sign in to confirm your age" in error_str.lower() or
+                            "inappropriate for some users" in error_str.lower()):
                             if attempt < max_retries - 1:
                                 logger.info(f"Anti-bot block detected. Retrying immediately with different client...")
                                 continue
@@ -415,12 +423,16 @@ def prepare_cover_detection(youtube_url1, youtube_url2):
 
 async def download_audio(youtube_id):
     # Dynamic client rotation for anti-bot evasion (same as sync version)
+    # iOS and TV clients often bypass age-gate restrictions better
     client_options = [
-        ['android'],
-        ['web'],
-        ['web_embedded'],
-        ['android', 'web_embedded'],
-        ['web', 'android'],
+        ['ios'],  # iOS client - often bypasses age gates
+        ['android'],  # Mobile client
+        ['tv_embedded'],  # TV client - good for age-restricted content
+        ['web'],  # Web client
+        ['web_embedded'],  # Embedded player
+        ['ios', 'android'],  # Mobile fallback chain
+        ['android', 'web_embedded'],  # Fallback chain
+        ['web', 'android'],  # Alternative chain
     ]
     geo_countries = ['US', 'UK', 'CA', 'AU', 'DE']
     
@@ -459,6 +471,14 @@ async def download_audio(youtube_id):
             last_error = e
             error_str = str(e)
             logger.warning(f"Async download failed (attempt {attempt + 1}): {error_str[:200]}")
+            
+            # Detect age-gate and anti-bot errors
+            if ("sign in to confirm your age" in error_str.lower() or
+                "inappropriate for some users" in error_str.lower() or
+                "unavailable" in error_str.lower() or
+                "private" in error_str.lower()):
+                logger.info(f"Age-gate/anti-bot block detected. Retrying with different client...")
+            
             if attempt < max_retries - 1:
                 logger.info(f"Retrying immediately with different client...")
                 continue
