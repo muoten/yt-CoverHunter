@@ -255,6 +255,9 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
             
             selected_geo = random.choice(geo_countries)
             
+            # Reset format to default at start of each attempt (in case it was modified in previous attempt)
+            ydl_opts['format'] = 'bestaudio/best'
+            
             ydl_opts['extractor_args'] = {
                 'youtube': {
                     'player_client': selected_client
@@ -285,9 +288,12 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                         # Note: "Video unavailable" can be either permanent unavailability OR anti-bot block
                         # We'll treat it as potentially retryable since user confirmed video is available
                         # Note: "sign in" is handled by age-gate detection above, so we exclude it here
+                        is_player_config_error = ("error 153" in error_str.lower() or 
+                                                 "player configuration error" in error_str.lower())
                         is_anti_bot_block = ("unavailable" in error_str.lower() or
                                             "private" in error_str.lower() or
-                                            "blocked" in error_str.lower())
+                                            "blocked" in error_str.lower() or
+                                            is_player_config_error)
                         
                         if is_age_gate:
                             age_gate_detected = True
@@ -301,28 +307,75 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                         
                         if is_anti_bot_block:
                             if attempt < max_retries - 1:
-                                logger.info(f"Anti-bot block detected (attempt {attempt + 1}). Retrying with different client...")
-                                # Add a small random delay to avoid detection patterns
-                                time.sleep(random.uniform(0.5, 2.0))
+                                if is_player_config_error:
+                                    logger.info(f"Player configuration error detected (attempt {attempt + 1}). Retrying with different client/format...")
+                                    # For player config errors, also try clearing format and letting yt-dlp auto-select
+                                    if 'format' in ydl_opts:
+                                        del ydl_opts['format']
+                                    time.sleep(random.uniform(0.5, 2.0))
+                                else:
+                                    logger.info(f"Anti-bot block detected (attempt {attempt + 1}). Retrying with different client...")
+                                    # Add a small random delay to avoid detection patterns
+                                    time.sleep(random.uniform(0.5, 2.0))
                                 continue
                             else:
                                 # Last attempt failed, try worst quality as final fallback
-                                logger.info(f"Final attempt: trying worst quality...")
-                                ydl_opts['format'] = 'worstaudio/worst'
-                                try:
-                                    ydl.download([f'https://www.youtube.com/watch?v={youtube_id}'])
-                                    break  # Success with worst quality
-                                except Exception as e2:
-                                    raise e  # Re-raise original error
+                                logger.info(f"Final attempt: trying alternative formats...")
+                                # Try multiple format options in case one fails with player config error
+                                format_options = ['worstaudio/worst', 'worst', 'worstaudio', 'bestaudio[ext=m4a]/best[ext=m4a]', 'bestaudio/best']
+                                format_success = False
+                                for fmt in format_options:
+                                    try:
+                                        ydl_opts['format'] = fmt
+                                        logger.info(f"Trying format: {fmt}")
+                                        ydl.download([f'https://www.youtube.com/watch?v={youtube_id}'])
+                                        format_success = True
+                                        break  # Success with alternative format
+                                    except Exception as e2:
+                                        error_str2 = str(e2)
+                                        # Check if it's a player configuration error
+                                        is_player_config_error = ("error 153" in error_str2.lower() or 
+                                                                 "player configuration error" in error_str2.lower())
+                                        if is_player_config_error:
+                                            logger.warning(f"Format {fmt} failed with player config error, trying next format...")
+                                            continue  # Try next format
+                                        else:
+                                            # Different error, continue to next format or re-raise
+                                            if fmt == format_options[-1]:  # Last format option
+                                                raise e  # Re-raise original error
+                                            continue
+                                
+                                if format_success:
+                                    break  # Success, exit retry loop
+                                else:
+                                    raise e  # Re-raise original error if all formats failed
                         else:
                             # Non-anti-bot error, try worst quality
                             logger.info(f"Trying worst quality format...")
-                            ydl_opts['format'] = 'worstaudio/worst'
-                            try:
-                                ydl.download([f'https://www.youtube.com/watch?v={youtube_id}'])
-                                break  # Success
-                            except Exception as e2:
-                                raise e  # Re-raise original error
+                            # Try multiple format options in case one fails with player config error
+                            format_options = ['worstaudio/worst', 'worst', 'worstaudio', 'bestaudio[ext=m4a]/best[ext=m4a]']
+                            format_success = False
+                            for fmt in format_options:
+                                try:
+                                    ydl_opts['format'] = fmt
+                                    logger.info(f"Trying format: {fmt}")
+                                    ydl.download([f'https://www.youtube.com/watch?v={youtube_id}'])
+                                    format_success = True
+                                    break  # Success
+                                except Exception as e2:
+                                    error_str2 = str(e2)
+                                    # Check if it's a player configuration error
+                                    is_player_config_error = ("error 153" in error_str2.lower() or 
+                                                             "player configuration error" in error_str2.lower())
+                                    if is_player_config_error:
+                                        logger.warning(f"Format {fmt} failed with player config error, trying next format...")
+                                        continue  # Try next format
+                                    else:
+                                        # Different error, re-raise original
+                                        raise e
+                            
+                            if not format_success:
+                                raise e  # Re-raise original error if all formats failed
             except Exception as e:
                 last_error = e
                 error_str = str(e)
