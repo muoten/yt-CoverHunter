@@ -243,9 +243,12 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
         
         for attempt in range(max_retries):
             # If age-gate detected, prioritize age-gate bypass clients
-            if age_gate_detected and attempt < len(age_gate_clients):
-                selected_client = age_gate_clients[attempt]
-                logger.info(f"Age-gate detected: using bypass client {selected_client}")
+            # Start with age-gate clients immediately when detected
+            if age_gate_detected:
+                # Use age-gate bypass clients, cycling through them
+                client_index = attempt % len(age_gate_clients)
+                selected_client = age_gate_clients[client_index]
+                logger.info(f"Age-gate detected: using bypass client {selected_client} (attempt {attempt + 1})")
             else:
                 # Normal random selection
                 selected_client = random.choice(client_options)
@@ -281,16 +284,22 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                         # Detect potential anti-bot blocks (including "unavailable" which can be a block)
                         # Note: "Video unavailable" can be either permanent unavailability OR anti-bot block
                         # We'll treat it as potentially retryable since user confirmed video is available
+                        # Note: "sign in" is handled by age-gate detection above, so we exclude it here
                         is_anti_bot_block = ("unavailable" in error_str.lower() or
                                             "private" in error_str.lower() or
-                                            "blocked" in error_str.lower() or
-                                            "sign in" in error_str.lower())
+                                            "blocked" in error_str.lower())
                         
                         if is_age_gate:
                             age_gate_detected = True
                             logger.info(f"Age-gate detected! Will prioritize iOS/TV clients for remaining attempts")
+                            # For age-gate, add a longer delay before retrying to let YouTube reset
+                            if attempt < max_retries - 1:
+                                delay = random.uniform(2.0, 5.0)
+                                logger.info(f"Age-gate: waiting {delay:.1f}s before retrying with bypass client...")
+                                time.sleep(delay)
+                                continue
                         
-                        if is_age_gate or is_anti_bot_block:
+                        if is_anti_bot_block:
                             if attempt < max_retries - 1:
                                 logger.info(f"Anti-bot block detected (attempt {attempt + 1}). Retrying with different client...")
                                 # Add a small random delay to avoid detection patterns
@@ -324,6 +333,12 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                 if is_age_gate:
                     age_gate_detected = True
                     logger.info(f"Age-gate detected in outer handler! Will prioritize iOS/TV clients")
+                    # For age-gate, add a longer delay
+                    if attempt < max_retries - 1:
+                        delay = random.uniform(2.0, 5.0)
+                        logger.info(f"Age-gate: waiting {delay:.1f}s before retrying with bypass client...")
+                        time.sleep(delay)
+                        continue
                 
                 if attempt < max_retries - 1:
                     logger.info(f"Retrying with different client (attempt {attempt + 1}/{max_retries})...")
@@ -489,9 +504,12 @@ async def download_audio(youtube_id):
     
     for attempt in range(max_retries):
         # If age-gate detected, prioritize age-gate bypass clients
-        if age_gate_detected and attempt < len(age_gate_clients):
-            selected_client = age_gate_clients[attempt]
-            logger.info(f"Age-gate detected: using bypass client {selected_client}")
+        # Start with age-gate clients immediately when detected
+        if age_gate_detected:
+            # Use age-gate bypass clients, cycling through them
+            client_index = attempt % len(age_gate_clients)
+            selected_client = age_gate_clients[client_index]
+            logger.info(f"Age-gate detected: using bypass client {selected_client} (attempt {attempt + 1})")
         else:
             # Normal random selection
             selected_client = random.choice(client_options)
@@ -533,18 +551,23 @@ async def download_audio(youtube_id):
             
             # Detect potential anti-bot blocks (including "unavailable" which can be a block)
             # Note: "Video unavailable" can be either permanent unavailability OR anti-bot block
+            # Note: "sign in" is handled by age-gate detection above, so we exclude it here
             is_anti_bot_block = ("unavailable" in error_str.lower() or
                                 "private" in error_str.lower() or
-                                "blocked" in error_str.lower() or
-                                "sign in" in error_str.lower())
+                                "blocked" in error_str.lower())
             
             if is_age_gate:
                 age_gate_detected = True
                 logger.info(f"Age-gate detected! Will prioritize iOS/TV clients for remaining attempts")
-            elif is_anti_bot_block:
-                logger.info(f"Anti-bot block detected (attempt {attempt + 1}). Retrying with different client...")
+                # For age-gate, add a longer delay before retrying to let YouTube reset
+                if attempt < max_retries - 1:
+                    delay = random.uniform(2.0, 5.0)
+                    logger.info(f"Age-gate: waiting {delay:.1f}s before retrying with bypass client...")
+                    await asyncio.sleep(delay)
+                    continue
             
-            if (is_age_gate or is_anti_bot_block) and attempt < max_retries - 1:
+            if is_anti_bot_block and attempt < max_retries - 1:
+                logger.info(f"Anti-bot block detected (attempt {attempt + 1}). Retrying with different client...")
                 # Add a small random delay to avoid detection patterns
                 await asyncio.sleep(random.uniform(0.5, 2.0))
                 continue
