@@ -215,48 +215,23 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
         
         # Dynamic client rotation for anti-bot evasion
         # Try different client types in random order
-        # iOS and TV clients often bypass age-gate restrictions better
         client_options = [
-            ['ios'],  # iOS client - often bypasses age gates
             ['android'],  # Mobile client
-            ['tv_embedded'],  # TV client - good for age-restricted content
             ['web'],  # Web client
             ['web_embedded'],  # Embedded player
-            ['ios', 'android'],  # Mobile fallback chain
             ['android', 'web_embedded'],  # Fallback chain
             ['web', 'android'],  # Alternative chain
         ]
         
         geo_countries = ['US', 'UK', 'CA', 'AU', 'DE']  # Rotate geo bypass
         
-        # Prioritized clients for age-gate bypass (iOS and TV work best)
-        age_gate_clients = [
-            ['ios'],  # Best for age-gate bypass
-            ['tv_embedded'],  # Second best
-            ['ios', 'tv_embedded'],  # iOS with TV fallback
-            ['ios', 'android'],  # iOS with Android fallback
-        ]
-        
         last_error = None
-        max_retries = 5  # Increased for persistent age-gate blocks
-        age_gate_detected = False
+        max_retries = 3
         
         for attempt in range(max_retries):
-            # If age-gate detected, prioritize age-gate bypass clients
-            # Start with age-gate clients immediately when detected
-            if age_gate_detected:
-                # Use age-gate bypass clients, cycling through them
-                client_index = attempt % len(age_gate_clients)
-                selected_client = age_gate_clients[client_index]
-                logger.info(f"Age-gate detected: using bypass client {selected_client} (attempt {attempt + 1})")
-            else:
-                # Normal random selection
-                selected_client = random.choice(client_options)
-            
+            # Select random client and geo for this attempt
+            selected_client = random.choice(client_options)
             selected_geo = random.choice(geo_countries)
-            
-            # Reset format to default at start of each attempt (in case it was modified in previous attempt)
-            ydl_opts['format'] = 'bestaudio/best'
             
             ydl_opts['extractor_args'] = {
                 'youtube': {
@@ -280,123 +255,33 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                         last_error = e
                         logger.warning(f"Download failed (attempt {attempt + 1}): {error_str[:200]}")
                         
-                        # Detect age-gate errors specifically (prioritize iOS/TV clients)
-                        is_age_gate = ("sign in to confirm your age" in error_str.lower() or
-                                      "inappropriate for some users" in error_str.lower())
-                        
-                        # Detect potential anti-bot blocks (including "unavailable" which can be a block)
-                        # Note: "Video unavailable" can be either permanent unavailability OR anti-bot block
-                        # We'll treat it as potentially retryable since user confirmed video is available
-                        # Note: "sign in" is handled by age-gate detection above, so we exclude it here
-                        is_player_config_error = ("error 153" in error_str.lower() or 
-                                                 "player configuration error" in error_str.lower())
-                        is_anti_bot_block = ("unavailable" in error_str.lower() or
-                                            "private" in error_str.lower() or
-                                            "blocked" in error_str.lower() or
-                                            is_player_config_error)
-                        
-                        if is_age_gate:
-                            age_gate_detected = True
-                            logger.info(f"Age-gate detected! Will prioritize iOS/TV clients for remaining attempts")
-                            # For age-gate, add a longer delay before retrying to let YouTube reset
+                        # If this looks like an anti-bot block, try next client immediately
+                        if "unavailable" in error_str.lower() or "private" in error_str.lower():
                             if attempt < max_retries - 1:
-                                delay = random.uniform(2.0, 5.0)
-                                logger.info(f"Age-gate: waiting {delay:.1f}s before retrying with bypass client...")
-                                time.sleep(delay)
-                                continue
-                        
-                        if is_anti_bot_block:
-                            if attempt < max_retries - 1:
-                                if is_player_config_error:
-                                    logger.info(f"Player configuration error detected (attempt {attempt + 1}). Retrying with different client/format...")
-                                    # For player config errors, also try clearing format and letting yt-dlp auto-select
-                                    if 'format' in ydl_opts:
-                                        del ydl_opts['format']
-                                    time.sleep(random.uniform(0.5, 2.0))
-                                else:
-                                    logger.info(f"Anti-bot block detected (attempt {attempt + 1}). Retrying with different client...")
-                                    # Add a small random delay to avoid detection patterns
-                                    time.sleep(random.uniform(0.5, 2.0))
+                                logger.info(f"Anti-bot block detected. Retrying immediately with different client...")
                                 continue
                             else:
                                 # Last attempt failed, try worst quality as final fallback
-                                logger.info(f"Final attempt: trying alternative formats...")
-                                # Try multiple format options in case one fails with player config error
-                                format_options = ['worstaudio/worst', 'worst', 'worstaudio', 'bestaudio[ext=m4a]/best[ext=m4a]', 'bestaudio/best']
-                                format_success = False
-                                for fmt in format_options:
-                                    try:
-                                        ydl_opts['format'] = fmt
-                                        logger.info(f"Trying format: {fmt}")
-                                        ydl.download([f'https://www.youtube.com/watch?v={youtube_id}'])
-                                        format_success = True
-                                        break  # Success with alternative format
-                                    except Exception as e2:
-                                        error_str2 = str(e2)
-                                        # Check if it's a player configuration error
-                                        is_player_config_error = ("error 153" in error_str2.lower() or 
-                                                                 "player configuration error" in error_str2.lower())
-                                        if is_player_config_error:
-                                            logger.warning(f"Format {fmt} failed with player config error, trying next format...")
-                                            continue  # Try next format
-                                        else:
-                                            # Different error, continue to next format or re-raise
-                                            if fmt == format_options[-1]:  # Last format option
-                                                raise e  # Re-raise original error
-                                            continue
-                                
-                                if format_success:
-                                    break  # Success, exit retry loop
-                                else:
-                                    raise e  # Re-raise original error if all formats failed
+                                logger.info(f"Final attempt: trying worst quality...")
+                                ydl_opts['format'] = 'worstaudio/worst'
+                                try:
+                                    ydl.download([f'https://www.youtube.com/watch?v={youtube_id}'])
+                                    break  # Success with worst quality
+                                except Exception as e2:
+                                    raise e  # Re-raise original error
                         else:
                             # Non-anti-bot error, try worst quality
                             logger.info(f"Trying worst quality format...")
-                            # Try multiple format options in case one fails with player config error
-                            format_options = ['worstaudio/worst', 'worst', 'worstaudio', 'bestaudio[ext=m4a]/best[ext=m4a]']
-                            format_success = False
-                            for fmt in format_options:
-                                try:
-                                    ydl_opts['format'] = fmt
-                                    logger.info(f"Trying format: {fmt}")
-                                    ydl.download([f'https://www.youtube.com/watch?v={youtube_id}'])
-                                    format_success = True
-                                    break  # Success
-                                except Exception as e2:
-                                    error_str2 = str(e2)
-                                    # Check if it's a player configuration error
-                                    is_player_config_error = ("error 153" in error_str2.lower() or 
-                                                             "player configuration error" in error_str2.lower())
-                                    if is_player_config_error:
-                                        logger.warning(f"Format {fmt} failed with player config error, trying next format...")
-                                        continue  # Try next format
-                                    else:
-                                        # Different error, re-raise original
-                                        raise e
-                            
-                            if not format_success:
-                                raise e  # Re-raise original error if all formats failed
+                            ydl_opts['format'] = 'worstaudio/worst'
+                            try:
+                                ydl.download([f'https://www.youtube.com/watch?v={youtube_id}'])
+                                break  # Success
+                            except Exception as e2:
+                                raise e  # Re-raise original error
             except Exception as e:
                 last_error = e
-                error_str = str(e)
-                
-                # Check for age-gate in outer exception handler
-                is_age_gate = ("sign in to confirm your age" in error_str.lower() or
-                              "inappropriate for some users" in error_str.lower())
-                if is_age_gate:
-                    age_gate_detected = True
-                    logger.info(f"Age-gate detected in outer handler! Will prioritize iOS/TV clients")
-                    # For age-gate, add a longer delay
-                    if attempt < max_retries - 1:
-                        delay = random.uniform(2.0, 5.0)
-                        logger.info(f"Age-gate: waiting {delay:.1f}s before retrying with bypass client...")
-                        time.sleep(delay)
-                        continue
-                
                 if attempt < max_retries - 1:
-                    logger.info(f"Retrying with different client (attempt {attempt + 1}/{max_retries})...")
-                    # Add a small random delay to avoid detection patterns
-                    time.sleep(random.uniform(0.5, 2.0))
+                    logger.info(f"Retrying immediately with different client...")
                     continue
                 else:
                     # All retries exhausted
@@ -530,43 +415,20 @@ def prepare_cover_detection(youtube_url1, youtube_url2):
 
 async def download_audio(youtube_id):
     # Dynamic client rotation for anti-bot evasion (same as sync version)
-    # iOS and TV clients often bypass age-gate restrictions better
     client_options = [
-        ['ios'],  # iOS client - often bypasses age gates
-        ['android'],  # Mobile client
-        ['tv_embedded'],  # TV client - good for age-restricted content
-        ['web'],  # Web client
-        ['web_embedded'],  # Embedded player
-        ['ios', 'android'],  # Mobile fallback chain
-        ['android', 'web_embedded'],  # Fallback chain
-        ['web', 'android'],  # Alternative chain
+        ['android'],
+        ['web'],
+        ['web_embedded'],
+        ['android', 'web_embedded'],
+        ['web', 'android'],
     ]
     geo_countries = ['US', 'UK', 'CA', 'AU', 'DE']
     
-    # Prioritized clients for age-gate bypass (iOS and TV work best)
-    age_gate_clients = [
-        ['ios'],  # Best for age-gate bypass
-        ['tv_embedded'],  # Second best
-        ['ios', 'tv_embedded'],  # iOS with TV fallback
-        ['ios', 'android'],  # iOS with Android fallback
-    ]
-    
     last_error = None
-    max_retries = 5  # Increased for persistent age-gate blocks
-    age_gate_detected = False
+    max_retries = 3
     
     for attempt in range(max_retries):
-        # If age-gate detected, prioritize age-gate bypass clients
-        # Start with age-gate clients immediately when detected
-        if age_gate_detected:
-            # Use age-gate bypass clients, cycling through them
-            client_index = attempt % len(age_gate_clients)
-            selected_client = age_gate_clients[client_index]
-            logger.info(f"Age-gate detected: using bypass client {selected_client} (attempt {attempt + 1})")
-        else:
-            # Normal random selection
-            selected_client = random.choice(client_options)
-        
+        selected_client = random.choice(client_options)
         selected_geo = random.choice(geo_countries)
         
         ydl_opts = {
@@ -597,32 +459,8 @@ async def download_audio(youtube_id):
             last_error = e
             error_str = str(e)
             logger.warning(f"Async download failed (attempt {attempt + 1}): {error_str[:200]}")
-            
-            # Detect age-gate errors specifically (prioritize iOS/TV clients)
-            is_age_gate = ("sign in to confirm your age" in error_str.lower() or
-                          "inappropriate for some users" in error_str.lower())
-            
-            # Detect potential anti-bot blocks (including "unavailable" which can be a block)
-            # Note: "Video unavailable" can be either permanent unavailability OR anti-bot block
-            # Note: "sign in" is handled by age-gate detection above, so we exclude it here
-            is_anti_bot_block = ("unavailable" in error_str.lower() or
-                                "private" in error_str.lower() or
-                                "blocked" in error_str.lower())
-            
-            if is_age_gate:
-                age_gate_detected = True
-                logger.info(f"Age-gate detected! Will prioritize iOS/TV clients for remaining attempts")
-                # For age-gate, add a longer delay before retrying to let YouTube reset
-                if attempt < max_retries - 1:
-                    delay = random.uniform(2.0, 5.0)
-                    logger.info(f"Age-gate: waiting {delay:.1f}s before retrying with bypass client...")
-                    await asyncio.sleep(delay)
-                    continue
-            
-            if is_anti_bot_block and attempt < max_retries - 1:
-                logger.info(f"Anti-bot block detected (attempt {attempt + 1}). Retrying with different client...")
-                # Add a small random delay to avoid detection patterns
-                await asyncio.sleep(random.uniform(0.5, 2.0))
+            if attempt < max_retries - 1:
+                logger.info(f"Retrying immediately with different client...")
                 continue
     
     if last_error and not os.path.exists(f'{WAV_FOLDER}/{youtube_id}.mp3'):
@@ -951,7 +789,6 @@ class CoverDetector:
             if video_id1 in vectors_csv:
                 logger.info("Using existing embeddings for first video")
                 embeddings1 = vectors_csv[video_id1]
-                wav_path1 = None  # Not needed if using cached embeddings
             else:
                 embeddings1 = None
 
@@ -962,15 +799,9 @@ class CoverDetector:
                     request['progress'] = 25
                     active_tasks[request['id']] = request
             
-            # Add random delay to avoid rate limiting between downloads
-            # This delay MUST happen between downloads to avoid anti-bot detection
-            # Second video is more likely to be blocked because it's part of a detected pattern
-            # Use longer delay (60-120s) to reduce pattern detection
-            min_delay = max(_MIN_DOWNLOAD_DELAY * 2, 60)  # At least 60 seconds
-            max_delay = max(_MIN_DOWNLOAD_DELAY * 4, 120)  # Up to 120 seconds
-            delay = random.uniform(min_delay, max_delay)
-            logger.info(f"Waiting {delay:.1f}s between first and second video downloads to avoid anti-bot detection...")
-            await asyncio.sleep(delay)  # Use async sleep to avoid blocking event loop
+                # Add random delay to avoid rate limiting
+                delay = random.uniform(15, 60)
+                time.sleep(delay)  # random delay between downloads
             
             # Update progress for second video download
             if request:
