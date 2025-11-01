@@ -183,20 +183,27 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                 break
         
         if not cookie_file:
-            # Check if YOUTUBE_COOKIES env var exists (should have been processed at startup)
-            if os.getenv('YOUTUBE_COOKIES'):
+            # Check if YOUTUBE_COOKIES env var exists - create cookie file on-demand if needed
+            youtube_cookies_env = os.getenv('YOUTUBE_COOKIES')
+            if youtube_cookies_env:
                 logger.warning("YOUTUBE_COOKIES env var exists but cookie file not found at /tmp/youtube_cookies.txt")
-                logger.warning("Cookie file may not have been created at startup - checking /tmp...")
-                # List files in /tmp to debug
+                logger.info("Creating cookie file from YOUTUBE_COOKIES environment variable...")
                 try:
-                    tmp_files = [f for f in os.listdir('/tmp') if 'cookie' in f.lower()]
-                    if tmp_files:
-                        logger.info(f"Found cookie-related files in /tmp: {tmp_files}")
+                    with open('/tmp/youtube_cookies.txt', 'w') as f:
+                        f.write(youtube_cookies_env)
+                    # Verify it was created
+                    if os.path.exists('/tmp/youtube_cookies.txt'):
+                        file_size = os.path.getsize('/tmp/youtube_cookies.txt')
+                        cookie_file = '/tmp/youtube_cookies.txt'
+                        logger.info(f"✓ Created cookie file from env var: {cookie_file} ({file_size} bytes)")
                     else:
-                        logger.warning("No cookie files found in /tmp")
+                        logger.error("Failed to create cookie file even though write succeeded")
                 except Exception as e:
-                    logger.debug(f"Could not list /tmp: {e}")
-            logger.debug("No cookie file found in any of the checked locations")
+                    logger.error(f"Failed to create cookie file from YOUTUBE_COOKIES: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+            else:
+                logger.debug("No YOUTUBE_COOKIES env var and no cookie file found")
         
         ydl_opts = {
             'format': 'bestaudio/best',
