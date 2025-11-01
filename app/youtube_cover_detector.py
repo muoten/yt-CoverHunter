@@ -434,7 +434,7 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                             cookie_file = None
                             logger.warning("YOUTUBE_COOKIES env var not available for recreation")
                     else:
-                        # Check if cookie count decreased (cookies may have expired)
+                        # Check if cookie count changed (cookies may have expired or file was modified)
                         file_size = os.path.getsize(cookie_file)
                         if attempt == 0 or attempt == max_retries - 1:
                             # Extract cookie count from message for comparison
@@ -443,8 +443,11 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                             if cookie_count_match:
                                 current_count = int(cookie_count_match.group(1))
                                 if attempt == max_retries - 1 and hasattr(verify_cookie_file, 'initial_count'):
-                                    if current_count < verify_cookie_file.initial_count:
-                                        logger.warning(f"Cookie count decreased from {verify_cookie_file.initial_count} to {current_count} - some cookies may have expired")
+                                    if current_count != verify_cookie_file.initial_count:
+                                        if current_count < verify_cookie_file.initial_count:
+                                            logger.warning(f"Cookie count decreased from {verify_cookie_file.initial_count} to {current_count} - some cookies may have expired")
+                                        else:
+                                            logger.warning(f"Cookie count INCREASED from {verify_cookie_file.initial_count} to {current_count} - file may have been recreated/modified")
                                     verify_cookie_file.initial_count = None  # Reset
                             logger.debug(f"Cookie file verified: {file_size} bytes - {message}")
                             # Store initial count for comparison
@@ -452,6 +455,12 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                                 cookie_count_match = re.search(r'(\d+)\s+cookies', message)
                                 if cookie_count_match:
                                     verify_cookie_file.initial_count = int(cookie_count_match.group(1))
+                                    verify_cookie_file.initial_size = file_size
+                                else:
+                                    # Try to extract YouTube cookie count
+                                    youtube_match = re.search(r'\((\d+)\s+YouTube', message)
+                                    if youtube_match:
+                                        verify_cookie_file.initial_count = int(youtube_match.group(1))
             
             logger.info(f"Attempt {attempt + 1}/{max_retries}: Using client {selected_client}, geo {selected_geo}")
             
