@@ -167,15 +167,20 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
         cookie_file = None
         possible_cookie_paths = [
             '/tmp/youtube_cookies.txt',
+            '/data/youtube_cookies.txt',  # Persistent volume mount
             os.path.expanduser('~/.config/youtube_cookies.txt'),
             os.getenv('YOUTUBE_COOKIES_FILE', ''),
         ]
         
         for cookie_path in possible_cookie_paths:
             if cookie_path and os.path.exists(cookie_path):
+                file_size = os.path.getsize(cookie_path)
                 cookie_file = cookie_path
-                logger.info(f"Using cookies from: {cookie_file}")
+                logger.info(f"Using cookies from: {cookie_file} ({file_size} bytes)")
                 break
+        
+        if not cookie_file:
+            logger.debug("No cookie file found in any of the checked locations")
         
         ydl_opts = {
             'format': 'bestaudio/best',
