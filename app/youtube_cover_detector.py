@@ -216,15 +216,14 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
         
         # Dynamic client rotation for anti-bot evasion
         # Prioritize android first as it's most reliable (no signature extraction issues)
-        # web client has signature extraction/SABR streaming issues on some videos
+        # Removed web/web_embedded clients - they have signature extraction/SABR streaming issues
         client_options = [
             ['android'],  # First choice - most reliable, no signature extraction issues
             ['ios'],  # Second choice - good for age-gated/restricted content
             ['tv_embedded'],  # Third choice - good for restricted content
             ['android', 'ios'],  # Fallback chain - android with ios backup
             ['android', 'tv_embedded'],  # Fallback chain - android with TV backup
-            ['web'],  # Web client - has issues but sometimes works
-            ['web_embedded'],  # Embedded player
+            ['ios', 'tv_embedded'],  # iOS with TV backup
         ]
         
         # Expanded geo countries list for better geo-restriction bypass
@@ -282,9 +281,14 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                     cmd_parts.extend(['--external-downloader', downloader])
                     if 'external_downloader_args' in opts and downloader in opts['external_downloader_args']:
                         args = opts['external_downloader_args'][downloader]
-                        # Format: --external-downloader-args "aria2c:arg1 arg2"
-                        args_str = ' '.join(str(a) for a in args)
-                        cmd_parts.extend(['--external-downloader-args', f'{downloader}:{args_str}'])
+                        # Format: --external-downloader-args "aria2c:arg1 arg2 arg3"
+                        # All aria2c arguments must be in a single string
+                        args_list = [str(a) for a in args]
+                        args_str = ' '.join(args_list)
+                        # Quote the entire argument to prevent shell splitting
+                        # Format: aria2c:-x 4 -s 4 --max-connection-per-server=4 ...
+                        full_args = f'{downloader}:{args_str}'
+                        cmd_parts.extend(['--external-downloader-args', full_args])
                 
                 # Cookie file
                 if 'cookiefile' in opts:
@@ -634,14 +638,14 @@ def prepare_cover_detection(youtube_url1, youtube_url2):
 async def download_audio(youtube_id):
     # Dynamic client rotation for anti-bot evasion (same as sync version)
     # Prioritize android first as it's most reliable (no signature extraction issues)
+    # Removed web/web_embedded clients - they have signature extraction/SABR streaming issues
     client_options = [
         ['android'],  # First choice - most reliable
         ['ios'],  # Second choice - good for restricted content
         ['tv_embedded'],  # Third choice - good for restricted content
         ['android', 'ios'],  # Fallback chain
         ['android', 'tv_embedded'],  # Fallback chain
-        ['web'],  # Web client - has signature extraction issues
-        ['web_embedded'],  # Embedded player
+        ['ios', 'tv_embedded'],  # iOS with TV backup
     ]
     geo_countries = ['US', 'UK', 'CA', 'AU', 'DE']
     
