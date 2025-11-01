@@ -369,10 +369,17 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                                         logger.info(f"Age-gate detected: Found cookie file, will use on retry: {cookie_file}")
                                         break
                         
-                        # If this looks like an anti-bot block, try next client immediately
+                        # If this looks like an anti-bot block, try next client with delay
                         if "unavailable" in error_str.lower() or "private" in error_str.lower():
                             if attempt < max_retries - 1:
-                                logger.info(f"Anti-bot block detected. Retrying immediately with different client...")
+                                # Add delay between retries, longer if we have cookies (might be rate-limited)
+                                if cookie_file:
+                                    delay = random.uniform(3.0, 8.0)  # 3-8 seconds with cookies
+                                    logger.info(f"Anti-bot block detected (with cookies). Waiting {delay:.1f}s before retry with different client...")
+                                else:
+                                    delay = random.uniform(1.0, 3.0)  # 1-3 seconds without cookies
+                                    logger.info(f"Anti-bot block detected. Waiting {delay:.1f}s before retry with different client...")
+                                time.sleep(delay)
                                 continue
                             else:
                                 # Last attempt failed, try worst quality as final fallback
