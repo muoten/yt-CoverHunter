@@ -354,9 +354,79 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                         logger.info("Download successful via CLI")
                         break  # Success! Break out of retry loop
                     else:
-                        error_str = result.stderr or result.stdout or ""
-                        logger.warning(f"CLI download failed: {error_str[:200]}")
-                        raise Exception(f"yt-dlp CLI failed: {error_str[:200]}")
+                        # Parse error from stderr or stdout
+                        error_str = (result.stderr or result.stdout or "").strip()
+                        logger.warning(f"CLI download failed (attempt {attempt + 1}): {error_str[:200]}")
+                        
+                        # Apply same error handling as Python API
+                        # Detect geo-restriction errors
+                        is_geo_restricted = ("not made this video available in your country" in error_str.lower() or
+                                            "not available in your country" in error_str.lower() or
+                                            "geo restricted" in error_str.lower())
+                        
+                        if is_geo_restricted:
+                            geo_restriction_detected = True
+                            logger.warning("Geo-restriction detected! Trying different country...")
+                            if attempt < max_retries - 1:
+                                delay = random.uniform(0.5, 1.5)
+                                logger.info(f"Waiting {delay:.1f}s before retry with different geo...")
+                                time.sleep(delay)
+                                continue
+                        
+                        # Detect format availability errors
+                        is_format_error = ("requested format is not available" in error_str.lower() or
+                                         "signature extraction failed" in error_str.lower() or
+                                         "sabr streaming" in error_str.lower() or
+                                         "only images are available" in error_str.lower())
+                        
+                        if is_format_error:
+                            logger.warning("Format extraction error detected. Trying different client...")
+                            if attempt < max_retries - 1:
+                                client_options = [['android'], ['ios'], ['tv_embedded'], ['android', 'ios']]
+                                delay = random.uniform(0.5, 1.5)
+                                logger.info(f"Waiting {delay:.1f}s before retry with mobile client...")
+                                time.sleep(delay)
+                                continue
+                        
+                        # Anti-bot block detection
+                        if "unavailable" in error_str.lower() or "private" in error_str.lower():
+                            if attempt < max_retries - 1:
+                                logger.info(f"Anti-bot block detected. Retrying immediately with different client...")
+                                continue
+                            else:
+                                # Last attempt failed, try worst quality as final fallback
+                                logger.info(f"Final attempt: trying worst quality...")
+                                ydl_opts['format'] = 'worstaudio/worst'
+                                # Rebuild command with worst quality
+                                cmd_list = ydl_opts_to_cmd_list(youtube_id, ydl_opts)
+                                full_cmd = ['python3', '-m', 'yt_dlp'] + cmd_list
+                                result = subprocess.run(full_cmd, capture_output=True, text=True, check=False)
+                                if result.returncode == 0:
+                                    logger.info("Download successful via CLI with worst quality")
+                                    break
+                                else:
+                                    last_error = Exception(f"yt-dlp CLI failed: {error_str[:200]}")
+                        else:
+                            # Non-anti-bot error, try worst quality
+                            logger.info(f"Trying worst quality format...")
+                            ydl_opts['format'] = 'worstaudio/worst'
+                            cmd_list = ydl_opts_to_cmd_list(youtube_id, ydl_opts)
+                            full_cmd = ['python3', '-m', 'yt_dlp'] + cmd_list
+                            result = subprocess.run(full_cmd, capture_output=True, text=True, check=False)
+                            if result.returncode == 0:
+                                logger.info("Download successful via CLI with worst quality")
+                                break
+                            else:
+                                last_error = Exception(f"yt-dlp CLI failed: {error_str[:200]}")
+                        
+                        # Store error for outer exception handler
+                        last_error = Exception(f"yt-dlp CLI failed: {error_str[:200]}")
+                        # Continue to next retry attempt (outer loop will handle max retries)
+                        if attempt < max_retries - 1:
+                            continue
+                        else:
+                            # Final attempt failed
+                            raise last_error
                 else:
                     # Use Python API (original method)
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
