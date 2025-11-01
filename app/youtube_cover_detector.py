@@ -163,6 +163,20 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                 except Exception as e:
                     logger.error(f"Error in progress hook: {e}")
 
+        # Check for cookie file - try multiple possible locations
+        cookie_file = None
+        possible_cookie_paths = [
+            '/tmp/youtube_cookies.txt',
+            os.path.expanduser('~/.config/youtube_cookies.txt'),
+            os.getenv('YOUTUBE_COOKIES_FILE', ''),
+        ]
+        
+        for cookie_path in possible_cookie_paths:
+            if cookie_path and os.path.exists(cookie_path):
+                cookie_file = cookie_path
+                logger.info(f"Using cookies from: {cookie_file}")
+                break
+        
         ydl_opts = {
             'format': 'bestaudio/best',
             'external_downloader': 'aria2c',
@@ -212,6 +226,36 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
             }],
             'outtmpl': f'{WAV_FOLDER}/{youtube_id}.%(ext)s',
         }
+        
+        # Add cookies if available
+        if cookie_file:
+            ydl_opts['cookiefile'] = cookie_file
+            logger.info(f"Using cookies file: {cookie_file}")
+        else:
+            # Try cookies-from-browser as fallback for age-gated videos
+            # This works if Chrome/Firefox browser data is accessible
+            # Note: In server environments, this may not be available
+            use_browser_cookies = os.getenv('USE_BROWSER_COOKIES', 'false').lower() == 'true'
+            if use_browser_cookies:
+                # Try to use browser cookies (requires browser profile access)
+                # Format: ('browser_name', 'profile_name', 'keyring_name')
+                # For Chrome: ('chrome', None, None) or ('chrome',)
+                # For Firefox: ('firefox', None, None) or ('firefox',)
+                try:
+                    # Try Chrome first if available
+                    ydl_opts['cookiesfrombrowser'] = ('chrome',)
+                    logger.info("Attempting to use cookies-from-browser (Chrome)")
+                except Exception as e:
+                    logger.debug(f"Chrome cookies not available: {e}")
+                    try:
+                        # Fall back to Firefox
+                        ydl_opts['cookiesfrombrowser'] = ('firefox',)
+                        logger.info("Attempting to use cookies-from-browser (Firefox)")
+                    except Exception as e2:
+                        logger.debug(f"Firefox cookies not available: {e2}")
+                        logger.warning("No cookies available - age-gated videos may fail. Set USE_BROWSER_COOKIES=true or provide YOUTUBE_COOKIES_FILE")
+            else:
+                logger.debug("Cookies-from-browser disabled (set USE_BROWSER_COOKIES=true to enable)")
         
         # Dynamic client rotation for anti-bot evasion
         # Try different client types in random order
@@ -431,6 +475,20 @@ async def download_audio(youtube_id):
         selected_client = random.choice(client_options)
         selected_geo = random.choice(geo_countries)
         
+        # Check for cookie file (same as sync version)
+        cookie_file = None
+        possible_cookie_paths = [
+            '/tmp/youtube_cookies.txt',
+            os.path.expanduser('~/.config/youtube_cookies.txt'),
+            os.getenv('YOUTUBE_COOKIES_FILE', ''),
+        ]
+        
+        for cookie_path in possible_cookie_paths:
+            if cookie_path and os.path.exists(cookie_path):
+                cookie_file = cookie_path
+                logger.info(f"Using cookies from: {cookie_file}")
+                break
+        
         ydl_opts = {
             'format': 'bestaudio/best',
             'quiet': True,
@@ -449,6 +507,24 @@ async def download_audio(youtube_id):
             'geo_bypass': True,
             'geo_bypass_country': selected_geo,
         }
+        
+        # Add cookies if available
+        if cookie_file:
+            ydl_opts['cookiefile'] = cookie_file
+            logger.info(f"Using cookies file: {cookie_file}")
+        else:
+            # Try cookies-from-browser if enabled
+            use_browser_cookies = os.getenv('USE_BROWSER_COOKIES', 'false').lower() == 'true'
+            if use_browser_cookies:
+                try:
+                    ydl_opts['cookiesfrombrowser'] = ('chrome',)
+                    logger.info("Attempting to use cookies-from-browser (Chrome)")
+                except Exception:
+                    try:
+                        ydl_opts['cookiesfrombrowser'] = ('firefox',)
+                        logger.info("Attempting to use cookies-from-browser (Firefox)")
+                    except Exception:
+                        logger.debug("Browser cookies not available")
         
         try:
             logger.info(f"Async download attempt {attempt + 1}/{max_retries}: client {selected_client}, geo {selected_geo}")
