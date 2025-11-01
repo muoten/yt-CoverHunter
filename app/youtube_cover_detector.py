@@ -276,12 +276,15 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                 if 'format' in opts:
                     cmd_parts.extend(['-f', opts['format']])
                 
-                # External downloader
+                # External downloader - must specify downloader name in args
                 if 'external_downloader' in opts:
-                    cmd_parts.extend(['--external-downloader', opts['external_downloader']])
-                    if 'external_downloader_args' in opts and opts['external_downloader'] in opts['external_downloader_args']:
-                        args = opts['external_downloader_args'][opts['external_downloader']]
-                        cmd_parts.extend(['--external-downloader-args', ' '.join(str(a) for a in args)])
+                    downloader = opts['external_downloader']
+                    cmd_parts.extend(['--external-downloader', downloader])
+                    if 'external_downloader_args' in opts and downloader in opts['external_downloader_args']:
+                        args = opts['external_downloader_args'][downloader]
+                        # Format: --external-downloader-args "aria2c:arg1 arg2"
+                        args_str = ' '.join(str(a) for a in args)
+                        cmd_parts.extend(['--external-downloader-args', f'{downloader}:{args_str}'])
                 
                 # Cookie file
                 if 'cookiefile' in opts:
