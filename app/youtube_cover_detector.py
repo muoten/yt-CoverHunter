@@ -214,17 +214,16 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
         }
         
         # Dynamic client rotation for anti-bot evasion
-        # Try different client types in random order
-        # Note: android client works better for some videos but may require PO token
-        # web client has signature extraction issues on some videos
+        # Prioritize android first as it's most reliable (no signature extraction issues)
+        # web client has signature extraction/SABR streaming issues on some videos
         client_options = [
-            ['android'],  # Mobile client - often most reliable
-            ['web'],  # Web client
+            ['android'],  # First choice - most reliable, no signature extraction issues
+            ['ios'],  # Second choice - good for age-gated/restricted content
+            ['tv_embedded'],  # Third choice - good for restricted content
+            ['android', 'ios'],  # Fallback chain - android with ios backup
+            ['android', 'tv_embedded'],  # Fallback chain - android with TV backup
+            ['web'],  # Web client - has issues but sometimes works
             ['web_embedded'],  # Embedded player
-            ['android', 'web_embedded'],  # Fallback chain
-            ['web', 'android'],  # Alternative chain
-            ['ios'],  # iOS client - good fallback
-            ['tv_embedded'],  # TV embedded - good for restricted content
         ]
         
         # Expanded geo countries list for better geo-restriction bypass
@@ -236,8 +235,13 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
         geo_restriction_detected = False
         
         for attempt in range(max_retries):
-            # Select random client and geo for this attempt
-            selected_client = random.choice(client_options)
+            # Prioritize android on first attempt, then randomize
+            if attempt == 0:
+                # First attempt: try android first (most reliable)
+                selected_client = ['android']
+            else:
+                # Subsequent attempts: random selection
+                selected_client = random.choice(client_options)
             
             # If geo-restriction detected, try more diverse countries or disable geo bypass
             if geo_restriction_detected and attempt >= 3:
@@ -465,12 +469,15 @@ def prepare_cover_detection(youtube_url1, youtube_url2):
 
 async def download_audio(youtube_id):
     # Dynamic client rotation for anti-bot evasion (same as sync version)
+    # Prioritize android first as it's most reliable (no signature extraction issues)
     client_options = [
-        ['android'],
-        ['web'],
-        ['web_embedded'],
-        ['android', 'web_embedded'],
-        ['web', 'android'],
+        ['android'],  # First choice - most reliable
+        ['ios'],  # Second choice - good for restricted content
+        ['tv_embedded'],  # Third choice - good for restricted content
+        ['android', 'ios'],  # Fallback chain
+        ['android', 'tv_embedded'],  # Fallback chain
+        ['web'],  # Web client - has signature extraction issues
+        ['web_embedded'],  # Embedded player
     ]
     geo_countries = ['US', 'UK', 'CA', 'AU', 'DE']
     
@@ -478,7 +485,13 @@ async def download_audio(youtube_id):
     max_retries = 3
     
     for attempt in range(max_retries):
-        selected_client = random.choice(client_options)
+        # Prioritize android on first attempt, then randomize
+        if attempt == 0:
+            # First attempt: try android first (most reliable)
+            selected_client = ['android']
+        else:
+            # Subsequent attempts: random selection
+            selected_client = random.choice(client_options)
         selected_geo = random.choice(geo_countries)
         
         ydl_opts = {
