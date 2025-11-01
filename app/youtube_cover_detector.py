@@ -215,12 +215,16 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
         
         # Dynamic client rotation for anti-bot evasion
         # Try different client types in random order
+        # Note: android client works better for some videos but may require PO token
+        # web client has signature extraction issues on some videos
         client_options = [
-            ['android'],  # Mobile client
+            ['android'],  # Mobile client - often most reliable
             ['web'],  # Web client
             ['web_embedded'],  # Embedded player
             ['android', 'web_embedded'],  # Fallback chain
             ['web', 'android'],  # Alternative chain
+            ['ios'],  # iOS client - good fallback
+            ['tv_embedded'],  # TV embedded - good for restricted content
         ]
         
         # Expanded geo countries list for better geo-restriction bypass
@@ -282,6 +286,22 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                                 # Try a different country
                                 delay = random.uniform(0.5, 1.5)
                                 logger.info(f"Waiting {delay:.1f}s before retry with different geo...")
+                                time.sleep(delay)
+                                continue
+                        
+                        # Detect format availability errors (signature extraction, SABR streaming, etc.)
+                        is_format_error = ("requested format is not available" in error_str.lower() or
+                                         "signature extraction failed" in error_str.lower() or
+                                         "sabr streaming" in error_str.lower() or
+                                         "only images are available" in error_str.lower())
+                        
+                        if is_format_error:
+                            logger.warning("Format extraction error detected (signature extraction/SABR issue). Trying different client...")
+                            if attempt < max_retries - 1:
+                                # Prioritize android/ios clients which don't have signature extraction issues
+                                client_options = [['android'], ['ios'], ['tv_embedded'], ['android', 'ios']]
+                                delay = random.uniform(0.5, 1.5)
+                                logger.info(f"Waiting {delay:.1f}s before retry with mobile client...")
                                 time.sleep(delay)
                                 continue
                         
