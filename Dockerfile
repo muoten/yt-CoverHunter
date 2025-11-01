@@ -69,8 +69,11 @@ RUN wget -O /code/pretrain_model/checkpoints/g_00000043 https://huggingface.co/m
 # Install nano at the end to avoid cache invalidation of previous layers
 RUN apt-get update && apt-get install -y nano && rm -rf /var/lib/apt/lists/*
 
-# Copy all application files at once - do this last to maximize cache usage
+# Copy application files (excluding config.yaml to preserve cache on config changes)
+# Copy app directory but exclude config.yaml
 COPY app/ /code/app/
+# Copy config.yaml separately at the end so config changes don't invalidate the entire cache
+COPY app/config.yaml /code/app/config.yaml
 COPY tools/ /code/tools/
 COPY src/ /code/src/
 COPY youtube_cover_detector_api.py /code/
