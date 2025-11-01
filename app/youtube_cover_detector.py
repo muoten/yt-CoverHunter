@@ -176,10 +176,26 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
             if cookie_path and os.path.exists(cookie_path):
                 file_size = os.path.getsize(cookie_path)
                 cookie_file = cookie_path
-                logger.info(f"Using cookies from: {cookie_file} ({file_size} bytes)")
+                logger.info(f"✓ Found cookie file: {cookie_file} ({file_size} bytes)")
+                # Verify it's a valid cookie file (should have some content)
+                if file_size < 100:
+                    logger.warning(f"Cookie file seems too small ({file_size} bytes), might be invalid")
                 break
         
         if not cookie_file:
+            # Check if YOUTUBE_COOKIES env var exists (should have been processed at startup)
+            if os.getenv('YOUTUBE_COOKIES'):
+                logger.warning("YOUTUBE_COOKIES env var exists but cookie file not found at /tmp/youtube_cookies.txt")
+                logger.warning("Cookie file may not have been created at startup - checking /tmp...")
+                # List files in /tmp to debug
+                try:
+                    tmp_files = [f for f in os.listdir('/tmp') if 'cookie' in f.lower()]
+                    if tmp_files:
+                        logger.info(f"Found cookie-related files in /tmp: {tmp_files}")
+                    else:
+                        logger.warning("No cookie files found in /tmp")
+                except Exception as e:
+                    logger.debug(f"Could not list /tmp: {e}")
             logger.debug("No cookie file found in any of the checked locations")
         
         ydl_opts = {
@@ -237,47 +253,62 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
             ydl_opts['cookiefile'] = cookie_file
             logger.info(f"Using cookies file: {cookie_file}")
         else:
-            # Try cookies-from-browser as fallback for age-gated videos
-            # This works if Chrome/Firefox browser data is accessible
-            # Note: In server environments, this may not be available
-            use_browser_cookies = os.getenv('USE_BROWSER_COOKIES', 'false').lower() == 'true'
-            if use_browser_cookies:
-                # Try to use browser cookies (requires browser profile access)
-                # Format: ('browser_name', 'profile_name', 'keyring_name')
-                # For Chrome: ('chrome', None, None) or ('chrome',)
-                # For Firefox: ('firefox', None, None) or ('firefox',)
+            # Try cookies-from-browser as fallback - always try this if no cookie file
+            # This can work even without a cookie file if browser cookies are accessible
+            # Since we have Chrome in Docker, try using it
+            logger.info("No cookie file found, attempting cookies-from-browser as fallback...")
+            try:
+                # Try Chrome - we have it installed in Docker
+                ydl_opts['cookiesfrombrowser'] = ('chrome',)
+                logger.info("Attempting to use cookies-from-browser (Chrome)")
+            except Exception as e:
+                logger.debug(f"Chrome cookies-from-browser failed: {e}")
                 try:
-                    # Try Chrome first if available
-                    ydl_opts['cookiesfrombrowser'] = ('chrome',)
-                    logger.info("Attempting to use cookies-from-browser (Chrome)")
-                except Exception as e:
-                    logger.debug(f"Chrome cookies not available: {e}")
-                    try:
-                        # Fall back to Firefox
-                        ydl_opts['cookiesfrombrowser'] = ('firefox',)
-                        logger.info("Attempting to use cookies-from-browser (Firefox)")
-                    except Exception as e2:
-                        logger.debug(f"Firefox cookies not available: {e2}")
-                        logger.warning("No cookies available - age-gated videos may fail. Set USE_BROWSER_COOKIES=true or provide YOUTUBE_COOKIES_FILE")
-            else:
-                logger.debug("Cookies-from-browser disabled (set USE_BROWSER_COOKIES=true to enable)")
+                    # Fall back to Firefox if available
+                    ydl_opts['cookiesfrombrowser'] = ('firefox',)
+                    logger.info("Attempting to use cookies-from-browser (Firefox)")
+                except Exception as e2:
+                    logger.warning(f"Browser cookies not available: {e2}")
+                    logger.warning("No cookies available - age-gated videos will likely fail")
+                    logger.warning("Set YOUTUBE_COOKIES env var or USE_BROWSER_COOKIES=true")
         
         # Dynamic client rotation for anti-bot evasion
-        # Try different client types in random order
-        client_options = [
-            ['android'],  # Mobile client
-            ['web'],  # Web client
-            ['web_embedded'],  # Embedded player
-            ['android', 'web_embedded'],  # Fallback chain
-            ['web', 'android'],  # Alternative chain
-        ]
+        # If cookies are available, prioritize iOS/TV clients which work better with cookies
+        if cookie_file:
+            client_options = [
+                ['ios'],  # Best for age-gate with cookies
+                ['tv_embedded'],  # Second best
+                ['ios', 'tv_embedded'],  # iOS with TV fallback
+                ['ios', 'android'],  # iOS with Android fallback
+                ['android'],  # Mobile client
+                ['web'],  # Web client
+            ]
+            logger.info("Using iOS/TV clients (cookies available)")
+        else:
+            client_options = [
+                ['android'],  # Mobile client
+                ['web'],  # Web client
+                ['web_embedded'],  # Embedded player
+                ['android', 'web_embedded'],  # Fallback chain
+                ['web', 'android'],  # Alternative chain
+            ]
         
         geo_countries = ['US', 'UK', 'CA', 'AU', 'DE']  # Rotate geo bypass
         
         last_error = None
-        max_retries = 3
+        max_retries = 5  # Increased retries when cookies are available
         
+        # Make sure cookie_file persists through retries
         for attempt in range(max_retries):
+            # Re-check cookie file at start of each attempt (in case it was created)
+            if not cookie_file:
+                for cookie_path in possible_cookie_paths:
+                    if cookie_path and os.path.exists(cookie_path):
+                        cookie_file = cookie_path
+                        ydl_opts['cookiefile'] = cookie_file
+                        logger.info(f"Found cookie file on retry: {cookie_file}")
+                        break
+            
             # Select random client and geo for this attempt
             selected_client = random.choice(client_options)
             selected_geo = random.choice(geo_countries)
@@ -289,6 +320,10 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
             }
             ydl_opts['geo_bypass'] = True
             ydl_opts['geo_bypass_country'] = selected_geo
+            
+            # Ensure cookies are still set
+            if cookie_file and 'cookiefile' not in ydl_opts:
+                ydl_opts['cookiefile'] = cookie_file
             
             logger.info(f"Attempt {attempt + 1}/{max_retries}: Using client {selected_client}, geo {selected_geo}")
             
@@ -303,6 +338,29 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                         error_str = str(e)
                         last_error = e
                         logger.warning(f"Download failed (attempt {attempt + 1}): {error_str[:200]}")
+                        
+                        # Detect age-gate errors
+                        is_age_gate = ("sign in to confirm your age" in error_str.lower() or
+                                      "inappropriate for some users" in error_str.lower() or
+                                      "use --cookies" in error_str.lower())
+                        
+                        if is_age_gate:
+                            logger.warning("Age-gate error detected!")
+                            # If we have cookies but still got age-gate, try different client
+                            if cookie_file:
+                                logger.info("Cookies are available but age-gate still failed. Retrying with different client...")
+                                if attempt < max_retries - 1:
+                                    # Switch to iOS client which works better with cookies
+                                    client_options = [['ios'], ['tv_embedded'], ['ios', 'tv_embedded']]
+                                    continue
+                            else:
+                                # No cookies - check if cookie file exists but wasn't loaded
+                                for cookie_path in possible_cookie_paths:
+                                    if cookie_path and os.path.exists(cookie_path):
+                                        cookie_file = cookie_path
+                                        ydl_opts['cookiefile'] = cookie_file
+                                        logger.info(f"Age-gate detected: Found cookie file, will use on retry: {cookie_file}")
+                                        break
                         
                         # If this looks like an anti-bot block, try next client immediately
                         if "unavailable" in error_str.lower() or "private" in error_str.lower():
