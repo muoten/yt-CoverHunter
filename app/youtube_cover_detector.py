@@ -163,105 +163,6 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                 except Exception as e:
                     logger.error(f"Error in progress hook: {e}")
 
-        def verify_cookie_file(file_path):
-            """Verify that cookie file is valid Netscape format and contains YouTube cookies."""
-            if not file_path or not os.path.exists(file_path):
-                return False, "File does not exist"
-            
-            try:
-                file_size = os.path.getsize(file_path)
-                if file_size < 50:
-                    return False, f"File too small ({file_size} bytes)"
-                
-                with open(file_path, 'r') as f:
-                    content = f.read()
-                
-                if not content:
-                    return False, "File is empty"
-                
-                lines = content.strip().split('\n')
-                non_comment_lines = [line for line in lines if line and not line.strip().startswith('#')]
-                
-                if len(non_comment_lines) == 0:
-                    return False, "No cookie entries found (only comments)"
-                
-                # Check if it's Netscape format (tab-separated)
-                valid_cookies = 0
-                youtube_cookies = 0
-                auth_cookies = []  # Track important auth cookies
-                for line in non_comment_lines:
-                    parts = line.split('\t')
-                    if len(parts) >= 7:
-                        valid_cookies += 1
-                        domain = parts[0].strip()
-                        cookie_name = parts[5].strip() if len(parts) > 5 else ''
-                        # Check for YouTube domains
-                        if '.youtube.com' in domain or 'youtube.com' in domain:
-                            youtube_cookies += 1
-                            # Check for important authentication cookies for age-gate
-                            if any(auth_name in cookie_name for auth_name in ['LOGIN_INFO', 'VISITOR_INFO1_LIVE', '__Secure-3PSID', 'SAPISID', '__Secure-3PAPISID']):
-                                auth_cookies.append(cookie_name)
-                
-                if valid_cookies == 0:
-                    return False, "No valid cookie entries found (wrong format)"
-                
-                if youtube_cookies == 0:
-                    logger.warning(f"Cookie file has {valid_cookies} cookies but none for YouTube domains")
-                
-                auth_status = f"{len(auth_cookies)} auth cookies" if auth_cookies else "no auth cookies"
-                return True, f"Valid: {valid_cookies} cookies ({youtube_cookies} YouTube cookies, {auth_status})"
-                
-            except Exception as e:
-                return False, f"Error reading file: {e}"
-        
-        # Check for cookie file - try multiple possible locations
-        cookie_file = None
-        possible_cookie_paths = [
-            '/tmp/youtube_cookies.txt',
-            '/data/youtube_cookies.txt',  # Persistent volume mount
-            os.path.expanduser('~/.config/youtube_cookies.txt'),
-            os.getenv('YOUTUBE_COOKIES_FILE', ''),
-        ]
-        
-        for cookie_path in possible_cookie_paths:
-            if cookie_path and os.path.exists(cookie_path):
-                is_valid, message = verify_cookie_file(cookie_path)
-                if is_valid:
-                    file_size = os.path.getsize(cookie_path)
-                    cookie_file = cookie_path
-                    logger.info(f"✓ Found valid cookie file: {cookie_file} ({file_size} bytes) - {message}")
-                    break
-                else:
-                    logger.warning(f"Cookie file found but invalid: {cookie_path} - {message}")
-        
-        if not cookie_file:
-            # Check if YOUTUBE_COOKIES env var exists - create cookie file on-demand if needed
-            youtube_cookies_env = os.getenv('YOUTUBE_COOKIES')
-            if youtube_cookies_env:
-                logger.warning("YOUTUBE_COOKIES env var exists but cookie file not found at /tmp/youtube_cookies.txt")
-                logger.info("Creating cookie file from YOUTUBE_COOKIES environment variable...")
-                try:
-                    with open('/tmp/youtube_cookies.txt', 'w') as f:
-                        f.write(youtube_cookies_env)
-                    # Verify it was created and valid
-                    if os.path.exists('/tmp/youtube_cookies.txt'):
-                        is_valid, message = verify_cookie_file('/tmp/youtube_cookies.txt')
-                        file_size = os.path.getsize('/tmp/youtube_cookies.txt')
-                        if is_valid:
-                            cookie_file = '/tmp/youtube_cookies.txt'
-                            logger.info(f"✓ Created valid cookie file from env var: {cookie_file} ({file_size} bytes) - {message}")
-                        else:
-                            logger.error(f"✗ Created cookie file but invalid: {message}")
-                            logger.error("Cookie file may be corrupted or in wrong format")
-                    else:
-                        logger.error("Failed to create cookie file even though write succeeded")
-                except Exception as e:
-                    logger.error(f"Failed to create cookie file from YOUTUBE_COOKIES: {e}")
-                    import traceback
-                    logger.error(traceback.format_exc())
-            else:
-                logger.debug("No YOUTUBE_COOKIES env var and no cookie file found")
-        
         ydl_opts = {
             'format': 'bestaudio/best',
             'external_downloader': 'aria2c',
@@ -312,80 +213,22 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
             'outtmpl': f'{WAV_FOLDER}/{youtube_id}.%(ext)s',
         }
         
-        # Add cookies if available
-        if cookie_file:
-            ydl_opts['cookiefile'] = cookie_file
-            logger.info(f"Using cookies file: {cookie_file}")
-        else:
-            # Try cookies-from-browser as fallback - always try this if no cookie file
-            # This can work even without a cookie file if browser cookies are accessible
-            # Since we have Chrome in Docker, try using it
-            logger.info("No cookie file found, attempting cookies-from-browser as fallback...")
-            try:
-                # Try Chrome - we have it installed in Docker
-                ydl_opts['cookiesfrombrowser'] = ('chrome',)
-                logger.info("Attempting to use cookies-from-browser (Chrome)")
-            except Exception as e:
-                logger.debug(f"Chrome cookies-from-browser failed: {e}")
-                try:
-                    # Fall back to Firefox if available
-                    ydl_opts['cookiesfrombrowser'] = ('firefox',)
-                    logger.info("Attempting to use cookies-from-browser (Firefox)")
-                except Exception as e2:
-                    logger.warning(f"Browser cookies not available: {e2}")
-                    logger.warning("No cookies available - age-gated videos will likely fail")
-                    logger.warning("Set YOUTUBE_COOKIES env var or USE_BROWSER_COOKIES=true")
-        
         # Dynamic client rotation for anti-bot evasion
-        # If cookies are available, prioritize iOS/TV clients which work better with cookies
-        if cookie_file:
-            client_options = [
-                ['ios'],  # Best for age-gate with cookies
-                ['tv_embedded'],  # Second best
-                ['ios', 'tv_embedded'],  # iOS with TV fallback
-                ['ios', 'android'],  # iOS with Android fallback
-                ['android'],  # Mobile client
-                ['web'],  # Web client
-            ]
-            logger.info("Using iOS/TV clients (cookies available)")
-        else:
-            client_options = [
-                ['android'],  # Mobile client
-                ['web'],  # Web client
-                ['web_embedded'],  # Embedded player
-                ['android', 'web_embedded'],  # Fallback chain
-                ['web', 'android'],  # Alternative chain
-            ]
+        # Try different client types in random order
+        client_options = [
+            ['android'],  # Mobile client
+            ['web'],  # Web client
+            ['web_embedded'],  # Embedded player
+            ['android', 'web_embedded'],  # Fallback chain
+            ['web', 'android'],  # Alternative chain
+        ]
         
         geo_countries = ['US', 'UK', 'CA', 'AU', 'DE']  # Rotate geo bypass
         
         last_error = None
-        max_retries = 5  # Increased retries when cookies are available
+        max_retries = 3
         
-        # Make sure cookie_file persists through retries
         for attempt in range(max_retries):
-            # Re-check cookie file at start of each attempt (in case it was created or needs refresh)
-            if not cookie_file or (cookie_file and not os.path.exists(cookie_file)):
-                for cookie_path in possible_cookie_paths:
-                    if cookie_path and os.path.exists(cookie_path):
-                        file_size = os.path.getsize(cookie_path)
-                        cookie_file = cookie_path
-                        ydl_opts['cookiefile'] = cookie_file
-                        logger.info(f"Found cookie file on retry: {cookie_file} ({file_size} bytes)")
-                        break
-                # If still no cookie file, try recreating from env var
-                if not cookie_file and os.getenv('YOUTUBE_COOKIES'):
-                    logger.warning("Cookie file lost, recreating from YOUTUBE_COOKIES env var...")
-                    try:
-                        with open('/tmp/youtube_cookies.txt', 'w') as f:
-                            f.write(os.getenv('YOUTUBE_COOKIES'))
-                        if os.path.exists('/tmp/youtube_cookies.txt'):
-                            cookie_file = '/tmp/youtube_cookies.txt'
-                            ydl_opts['cookiefile'] = cookie_file
-                            logger.info(f"Recreated cookie file: {cookie_file}")
-                    except Exception as e:
-                        logger.error(f"Failed to recreate cookie file: {e}")
-            
             # Select random client and geo for this attempt
             selected_client = random.choice(client_options)
             selected_geo = random.choice(geo_countries)
@@ -397,70 +240,6 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
             }
             ydl_opts['geo_bypass'] = True
             ydl_opts['geo_bypass_country'] = selected_geo
-            
-            # Ensure cookies are still set and file exists
-            if cookie_file:
-                if 'cookiefile' not in ydl_opts:
-                    ydl_opts['cookiefile'] = cookie_file
-                # Verify cookie file still exists before each attempt
-                if not os.path.exists(cookie_file):
-                    logger.warning(f"Cookie file disappeared: {cookie_file}. Recreating...")
-                    if os.getenv('YOUTUBE_COOKIES'):
-                        try:
-                            with open(cookie_file, 'w') as f:
-                                f.write(os.getenv('YOUTUBE_COOKIES'))
-                            logger.info(f"Recreated cookie file: {cookie_file}")
-                        except Exception as e:
-                            logger.error(f"Failed to recreate cookie file: {e}")
-                    else:
-                        cookie_file = None
-                elif os.path.exists(cookie_file):
-                    # Verify cookie file is still valid
-                    is_valid, message = verify_cookie_file(cookie_file)
-                    if not is_valid:
-                        logger.warning(f"Cookie file became invalid: {message}. Recreating...")
-                        if os.getenv('YOUTUBE_COOKIES'):
-                            try:
-                                with open(cookie_file, 'w') as f:
-                                    f.write(os.getenv('YOUTUBE_COOKIES'))
-                                is_valid_new, msg_new = verify_cookie_file(cookie_file)
-                                if is_valid_new:
-                                    logger.info(f"Recreated valid cookie file: {msg_new}")
-                                else:
-                                    logger.error(f"Recreated cookie file still invalid: {msg_new}")
-                            except Exception as e:
-                                logger.error(f"Failed to recreate cookie file: {e}")
-                        else:
-                            cookie_file = None
-                            logger.warning("YOUTUBE_COOKIES env var not available for recreation")
-                    else:
-                        # Check if cookie count changed (cookies may have expired or file was modified)
-                        file_size = os.path.getsize(cookie_file)
-                        if attempt == 0 or attempt == max_retries - 1:
-                            # Extract cookie count from message for comparison
-                            import re
-                            cookie_count_match = re.search(r'(\d+)\s+cookies', message)
-                            if cookie_count_match:
-                                current_count = int(cookie_count_match.group(1))
-                                if attempt == max_retries - 1 and hasattr(verify_cookie_file, 'initial_count'):
-                                    if current_count != verify_cookie_file.initial_count:
-                                        if current_count < verify_cookie_file.initial_count:
-                                            logger.warning(f"Cookie count decreased from {verify_cookie_file.initial_count} to {current_count} - some cookies may have expired")
-                                        else:
-                                            logger.warning(f"Cookie count INCREASED from {verify_cookie_file.initial_count} to {current_count} - file may have been recreated/modified")
-                                    verify_cookie_file.initial_count = None  # Reset
-                            logger.debug(f"Cookie file verified: {file_size} bytes - {message}")
-                            # Store initial count for comparison
-                            if attempt == 0:
-                                cookie_count_match = re.search(r'(\d+)\s+cookies', message)
-                                if cookie_count_match:
-                                    verify_cookie_file.initial_count = int(cookie_count_match.group(1))
-                                    verify_cookie_file.initial_size = file_size
-                                else:
-                                    # Try to extract YouTube cookie count
-                                    youtube_match = re.search(r'\((\d+)\s+YouTube', message)
-                                    if youtube_match:
-                                        verify_cookie_file.initial_count = int(youtube_match.group(1))
             
             logger.info(f"Attempt {attempt + 1}/{max_retries}: Using client {selected_client}, geo {selected_geo}")
             
@@ -476,49 +255,10 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                         last_error = e
                         logger.warning(f"Download failed (attempt {attempt + 1}): {error_str[:200]}")
                         
-                        # Detect age-gate errors
-                        is_age_gate = ("sign in to confirm your age" in error_str.lower() or
-                                      "inappropriate for some users" in error_str.lower() or
-                                      "use --cookies" in error_str.lower())
-                        
-                        if is_age_gate:
-                            logger.warning("Age-gate error detected!")
-                            # If we have cookies but still got age-gate, try different client with delay
-                            if cookie_file:
-                                logger.info("Cookies are available but age-gate still failed. Retrying with different client...")
-                                if attempt < max_retries - 1:
-                                    # Switch to iOS/TV clients which work better with cookies
-                                    client_options = [['ios'], ['tv_embedded'], ['ios', 'tv_embedded'], ['ios', 'android']]
-                                    # Add longer delay for age-gate - YouTube needs time to process cookies
-                                    delay = random.uniform(2.0, 5.0)
-                                    logger.info(f"Age-gate: waiting {delay:.1f}s before retry with iOS/TV client...")
-                                    time.sleep(delay)
-                                    # Ensure cookies are still set
-                                    ydl_opts['cookiefile'] = cookie_file
-                                    continue
-                                else:
-                                    logger.error("Age-gate failed after all retries with cookies. Cookies may be invalid or missing authentication.")
-                                    logger.error("Consider regenerating cookies or ensuring your account has proper age verification set up.")
-                            else:
-                                # No cookies - check if cookie file exists but wasn't loaded
-                                for cookie_path in possible_cookie_paths:
-                                    if cookie_path and os.path.exists(cookie_path):
-                                        cookie_file = cookie_path
-                                        ydl_opts['cookiefile'] = cookie_file
-                                        logger.info(f"Age-gate detected: Found cookie file, will use on retry: {cookie_file}")
-                                        break
-                        
-                        # If this looks like an anti-bot block, try next client with delay
+                        # If this looks like an anti-bot block, try next client immediately
                         if "unavailable" in error_str.lower() or "private" in error_str.lower():
                             if attempt < max_retries - 1:
-                                # Add delay between retries, longer if we have cookies (might be rate-limited)
-                                if cookie_file:
-                                    delay = random.uniform(3.0, 8.0)  # 3-8 seconds with cookies
-                                    logger.info(f"Anti-bot block detected (with cookies). Waiting {delay:.1f}s before retry with different client...")
-                                else:
-                                    delay = random.uniform(1.0, 3.0)  # 1-3 seconds without cookies
-                                    logger.info(f"Anti-bot block detected. Waiting {delay:.1f}s before retry with different client...")
-                                time.sleep(delay)
+                                logger.info(f"Anti-bot block detected. Retrying immediately with different client...")
                                 continue
                             else:
                                 # Last attempt failed, try worst quality as final fallback
@@ -691,20 +431,6 @@ async def download_audio(youtube_id):
         selected_client = random.choice(client_options)
         selected_geo = random.choice(geo_countries)
         
-        # Check for cookie file (same as sync version)
-        cookie_file = None
-        possible_cookie_paths = [
-            '/tmp/youtube_cookies.txt',
-            os.path.expanduser('~/.config/youtube_cookies.txt'),
-            os.getenv('YOUTUBE_COOKIES_FILE', ''),
-        ]
-        
-        for cookie_path in possible_cookie_paths:
-            if cookie_path and os.path.exists(cookie_path):
-                cookie_file = cookie_path
-                logger.info(f"Using cookies from: {cookie_file}")
-                break
-        
         ydl_opts = {
             'format': 'bestaudio/best',
             'quiet': True,
@@ -723,24 +449,6 @@ async def download_audio(youtube_id):
             'geo_bypass': True,
             'geo_bypass_country': selected_geo,
         }
-        
-        # Add cookies if available
-        if cookie_file:
-            ydl_opts['cookiefile'] = cookie_file
-            logger.info(f"Using cookies file: {cookie_file}")
-        else:
-            # Try cookies-from-browser if enabled
-            use_browser_cookies = os.getenv('USE_BROWSER_COOKIES', 'false').lower() == 'true'
-            if use_browser_cookies:
-                try:
-                    ydl_opts['cookiesfrombrowser'] = ('chrome',)
-                    logger.info("Attempting to use cookies-from-browser (Chrome)")
-                except Exception:
-                    try:
-                        ydl_opts['cookiesfrombrowser'] = ('firefox',)
-                        logger.info("Attempting to use cookies-from-browser (Firefox)")
-                    except Exception:
-                        logger.debug("Browser cookies not available")
         
         try:
             logger.info(f"Async download attempt {attempt + 1}/{max_retries}: client {selected_client}, geo {selected_geo}")
