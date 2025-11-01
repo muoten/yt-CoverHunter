@@ -362,10 +362,10 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                             ydl.download([f'https://www.youtube.com/watch?v={youtube_id}'])
                             # Success! Break out of retry loop
                             break
-                    except Exception as e:
-                        error_str = str(e)
-                        last_error = e
-                        logger.warning(f"Download failed (attempt {attempt + 1}): {error_str[:200]}")
+                        except Exception as e:
+                            error_str = str(e)
+                            last_error = e
+                            logger.warning(f"Download failed (attempt {attempt + 1}): {error_str[:200]}")
                         
                         # Detect geo-restriction errors
                         is_geo_restricted = ("not made this video available in your country" in error_str.lower() or
@@ -408,6 +408,7 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                                 logger.info(f"Final attempt: trying worst quality...")
                                 ydl_opts['format'] = 'worstaudio/worst'
                                 try:
+                                    # ydl is still in scope within the with block
                                     ydl.download([f'https://www.youtube.com/watch?v={youtube_id}'])
                                     break  # Success with worst quality
                                 except Exception as e2:
@@ -417,6 +418,7 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                             logger.info(f"Trying worst quality format...")
                             ydl_opts['format'] = 'worstaudio/worst'
                             try:
+                                # ydl is still in scope within the with block
                                 ydl.download([f'https://www.youtube.com/watch?v={youtube_id}'])
                                 break  # Success
                             except Exception as e2:
