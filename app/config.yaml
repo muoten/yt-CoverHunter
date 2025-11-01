@@ -3,7 +3,7 @@ MODEL_FOLDER: /code/pretrain_model
 COVERHUNTER_FOLDER: /code/
 THRESHOLD: 0.2
 YT_DLP_USE_COOKIES: False
-YT_DLP_USE_CLI: False  # Use command-line yt-dlp instead of Python API (more reliable for some videos)
+YT_DLP_USE_CLI: True  # Use command-line yt-dlp instead of Python API (more reliable for some videos)
 SCORES_CSV_FILE: /data/compared_videos.csv
 VECTORS_CSV_FILE: /data/vectors.csv
 PROCESS_ONLY_FIRST_N_SECONDS: -1  # This means processing entire audio files
