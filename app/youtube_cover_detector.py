@@ -12,6 +12,7 @@ import json
 import pickle
 import time
 import asyncio
+import subprocess
 import yt_dlp
 import soundfile as sf
 import librosa
@@ -267,9 +268,9 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
             logger.info(f"Attempt {attempt + 1}/{max_retries}: Using client {selected_client}, {geo_info}")
             
             # Log equivalent command line for debugging
-            def ydl_opts_to_cmd(youtube_id, opts):
-                """Convert yt-dlp options to equivalent command line."""
-                cmd_parts = ['yt-dlp']
+            def ydl_opts_to_cmd_list(youtube_id, opts):
+                """Convert yt-dlp options to command line list (for subprocess)."""
+                cmd_parts = []
                 
                 # Format
                 if 'format' in opts:
@@ -317,25 +318,50 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                             if 'preferredcodec' in pp:
                                 cmd_parts.extend(['--audio-format', pp['preferredcodec']])
                 
-                # HTTP headers (complex to represent, but can show key ones)
-                if 'http_headers' in opts:
-                    logger.debug(f"HTTP headers: User-Agent={opts['http_headers'].get('User-Agent', 'N/A')[:50]}...")
-                
                 # Add the URL
                 cmd_parts.append(f'https://www.youtube.com/watch?v={youtube_id}')
                 
-                return ' '.join(cmd_parts)
+                return cmd_parts
             
-            equivalent_cmd = ydl_opts_to_cmd(youtube_id, ydl_opts)
-            logger.debug(f"Equivalent yt-dlp command: {equivalent_cmd}")
+            cmd_list = ydl_opts_to_cmd_list(youtube_id, ydl_opts)
+            equivalent_cmd_str = 'python3 -m yt_dlp ' + ' '.join(f'"{arg}"' if ' ' in arg or '=' in arg else arg for arg in cmd_list)
+            logger.debug(f"Equivalent yt-dlp command: {equivalent_cmd_str}")
+            
+            # Check if command-line mode is enabled
+            use_cli = os.getenv('YT_DLP_USE_CLI', 'false').lower() in ('true', '1', 'yes')
+            use_cli_config = config.get('YT_DLP_USE_CLI', False)
+            use_command_line = use_cli or use_cli_config
             
             try:
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    try:
-                        logger.info(f"Attempting download with best quality...")
-                        ydl.download([f'https://www.youtube.com/watch?v={youtube_id}'])
-                        # Success! Break out of retry loop
-                        break
+                if use_command_line:
+                    # Use command-line yt-dlp (more reliable for some videos)
+                    logger.info(f"Using command-line yt-dlp (CLI mode enabled)")
+                    # Build command: python3 -m yt_dlp [args] [url]
+                    full_cmd = ['python3', '-m', 'yt_dlp'] + cmd_list
+                    
+                    logger.debug(f"Executing: {' '.join(full_cmd)}")
+                    result = subprocess.run(
+                        full_cmd,
+                        capture_output=True,
+                        text=True,
+                        check=False  # Don't raise on non-zero exit
+                    )
+                    
+                    if result.returncode == 0:
+                        logger.info("Download successful via CLI")
+                        break  # Success! Break out of retry loop
+                    else:
+                        error_str = result.stderr or result.stdout or ""
+                        logger.warning(f"CLI download failed: {error_str[:200]}")
+                        raise Exception(f"yt-dlp CLI failed: {error_str[:200]}")
+                else:
+                    # Use Python API (original method)
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        try:
+                            logger.info(f"Attempting download with best quality...")
+                            ydl.download([f'https://www.youtube.com/watch?v={youtube_id}'])
+                            # Success! Break out of retry loop
+                            break
                     except Exception as e:
                         error_str = str(e)
                         last_error = e
