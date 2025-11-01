@@ -266,6 +266,69 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
             geo_info = f"geo {selected_geo}" if selected_geo else "no geo bypass"
             logger.info(f"Attempt {attempt + 1}/{max_retries}: Using client {selected_client}, {geo_info}")
             
+            # Log equivalent command line for debugging
+            def ydl_opts_to_cmd(youtube_id, opts):
+                """Convert yt-dlp options to equivalent command line."""
+                cmd_parts = ['yt-dlp']
+                
+                # Format
+                if 'format' in opts:
+                    cmd_parts.extend(['-f', opts['format']])
+                
+                # External downloader
+                if 'external_downloader' in opts:
+                    cmd_parts.extend(['--external-downloader', opts['external_downloader']])
+                    if 'external_downloader_args' in opts and opts['external_downloader'] in opts['external_downloader_args']:
+                        args = opts['external_downloader_args'][opts['external_downloader']]
+                        cmd_parts.extend(['--external-downloader-args', ' '.join(str(a) for a in args)])
+                
+                # Cookie file
+                if 'cookiefile' in opts:
+                    cmd_parts.extend(['--cookies', opts['cookiefile']])
+                
+                # Cookies from browser
+                if 'cookiesfrombrowser' in opts:
+                    browser = opts['cookiesfrombrowser'][0] if isinstance(opts['cookiesfrombrowser'], tuple) else opts['cookiesfrombrowser']
+                    cmd_parts.extend(['--cookies-from-browser', browser])
+                
+                # Extractor args (player client)
+                if 'extractor_args' in opts and 'youtube' in opts['extractor_args']:
+                    player_client = opts['extractor_args']['youtube'].get('player_client', [])
+                    if player_client:
+                        client_str = ','.join(player_client) if isinstance(player_client, list) else str(player_client)
+                        cmd_parts.extend(['--extractor-args', f'youtube:player_client={client_str}'])
+                
+                # Geo bypass
+                if opts.get('geo_bypass'):
+                    if 'geo_bypass_country' in opts:
+                        cmd_parts.extend(['--geo-bypass-country', opts['geo_bypass_country']])
+                    else:
+                        cmd_parts.append('--geo-bypass')
+                
+                # Output template
+                if 'outtmpl' in opts:
+                    cmd_parts.extend(['-o', opts['outtmpl']])
+                
+                # Postprocessor (audio extraction)
+                if 'postprocessors' in opts:
+                    for pp in opts['postprocessors']:
+                        if pp.get('key') == 'FFmpegExtractAudio':
+                            cmd_parts.extend(['--extract-audio'])
+                            if 'preferredcodec' in pp:
+                                cmd_parts.extend(['--audio-format', pp['preferredcodec']])
+                
+                # HTTP headers (complex to represent, but can show key ones)
+                if 'http_headers' in opts:
+                    logger.debug(f"HTTP headers: User-Agent={opts['http_headers'].get('User-Agent', 'N/A')[:50]}...")
+                
+                # Add the URL
+                cmd_parts.append(f'https://www.youtube.com/watch?v={youtube_id}')
+                
+                return ' '.join(cmd_parts)
+            
+            equivalent_cmd = ydl_opts_to_cmd(youtube_id, ydl_opts)
+            logger.debug(f"Equivalent yt-dlp command: {equivalent_cmd}")
+            
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     try:
