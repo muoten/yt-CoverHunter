@@ -101,8 +101,14 @@ def setup_logger():
 
 logger = setup_logger()
 
-def _generate_audio_from_youtube_id(youtube_id, request=None):
-    """Generate audio from YouTube ID with user agent rotation and anti-bot evasion"""
+def _generate_audio_from_youtube_id(youtube_id, request=None, prefer_ios=False):
+    """Generate audio from YouTube ID with user agent rotation and anti-bot evasion
+    
+    Args:
+        youtube_id: YouTube video ID
+        request: Optional request dict for progress tracking
+        prefer_ios: If True, prefer ios client first (useful for second video to vary pattern)
+    """
     
     global _last_download_time
     
@@ -231,10 +237,16 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
         geo_restriction_detected = False
         
         for attempt in range(max_retries):
-            # Prioritize android on first attempt, then randomize
+            # Vary client selection to avoid detection
             if attempt == 0:
-                # First attempt: try android first (most reliable)
-                selected_client = ['android']
+                # First attempt: use prefer_ios flag to vary pattern between first and second video
+                if prefer_ios:
+                    # For second video, start with ios to avoid same pattern as first video
+                    selected_client = ['ios']
+                    logger.info("Using ios client first (second video - varying pattern)")
+                else:
+                    # For first video, use android (most reliable)
+                    selected_client = ['android']
             else:
                 # Subsequent attempts: random selection
                 selected_client = random.choice(client_options)
@@ -352,10 +364,42 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                     
                     if result.returncode == 0:
                         logger.info("Download successful via CLI")
+                        # Check for warnings but don't fail on them
+                        if result.stderr:
+                            warnings = result.stderr
+                            # Log warnings but don't fail - PO token warnings are common but downloads can still succeed
+                            if "WARNING" in warnings or "GVS PO Token" in warnings:
+                                logger.debug(f"CLI warnings (non-fatal): {warnings[:300]}")
+                        
+                        # Verify the mp3 file was created (yt-dlp with --extract-audio should create it)
+                        mp3_path = f'{WAV_FOLDER}/{youtube_id}.mp3'
+                        # Also check for other possible formats (mp4, m4a, etc.) that might need conversion
+                        possible_formats = ['.mp3', '.m4a', '.mp4', '.webm', '.opus']
+                        file_found = False
+                        for ext in possible_formats:
+                            test_path = f'{WAV_FOLDER}/{youtube_id}{ext}'
+                            if os.path.exists(test_path):
+                                file_found = True
+                                logger.debug(f"Downloaded file found: {test_path}")
+                                # If it's not mp3, rename it or note that conversion might be needed
+                                if ext != '.mp3' and not os.path.exists(mp3_path):
+                                    logger.warning(f"Downloaded {ext} file but expected mp3. File may need conversion.")
+                                break
+                        
+                        if not file_found:
+                            logger.warning(f"CLI returned success but no output file found in {WAV_FOLDER}/")
+                            logger.warning(f"Checking stdout for file location: {result.stdout[:500] if result.stdout else 'No stdout'}")
+                            # Don't fail here - let the mp3 check later catch it
+                        
                         break  # Success! Break out of retry loop
                     else:
                         # Parse error from stderr or stdout
                         error_str = (result.stderr or result.stdout or "").strip()
+                        # Filter out warnings - only treat actual errors as failures
+                        error_lines = error_str.split('\n')
+                        actual_errors = [line for line in error_lines if line.startswith('ERROR:')]
+                        if actual_errors:
+                            error_str = '\n'.join(actual_errors)
                         logger.warning(f"CLI download failed (attempt {attempt + 1}): {error_str[:200]}")
                         
                         # Apply same error handling as Python API
@@ -1022,9 +1066,11 @@ class CoverDetector:
                     request['progress'] = 25
                     active_tasks[request['id']] = request
             
-                # Add random delay to avoid rate limiting
-                delay = random.uniform(15, 60)
-                time.sleep(delay)  # random delay between downloads
+                # Add longer random delay to avoid rate limiting after first download
+                # YouTube is more likely to block the second download, so use longer delay
+                delay = random.uniform(max(_MIN_DOWNLOAD_DELAY * 2, 60), max(_MIN_DOWNLOAD_DELAY * 4, 120))
+                logger.info(f"Waiting {delay:.1f}s before second video download to avoid rate limiting...")
+                await asyncio.sleep(delay)  # Use asyncio.sleep in async context
             
             # Update progress for second video download
             if request:
@@ -1041,7 +1087,8 @@ class CoverDetector:
                 embeddings2 = None
 
                 logger.info("Starting download of second video")
-                wav2 = _generate_audio_from_youtube_id(video_id2, request=request)
+                # Use prefer_ios=True for second video to vary the client pattern and avoid detection
+                wav2 = _generate_audio_from_youtube_id(video_id2, request=request, prefer_ios=True)
                 wav_path2 = os.path.join(self.wav_folder, wav2)
                 if request:
                     request['progress'] = 45
