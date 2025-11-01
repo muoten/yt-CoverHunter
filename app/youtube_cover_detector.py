@@ -223,25 +223,40 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
             ['web', 'android'],  # Alternative chain
         ]
         
-        geo_countries = ['US', 'UK', 'CA', 'AU', 'DE']  # Rotate geo bypass
+        # Expanded geo countries list for better geo-restriction bypass
+        geo_countries = ['US', 'UK', 'CA', 'AU', 'DE', 'FR', 'JP', 'KR', 'NL', 'SE', 'NO', 'DK', 'FI', 'NZ', 'SG']
         
         last_error = None
-        max_retries = 3
+        max_retries = 5  # Increased retries for geo-restriction issues
+        
+        geo_restriction_detected = False
         
         for attempt in range(max_retries):
             # Select random client and geo for this attempt
             selected_client = random.choice(client_options)
-            selected_geo = random.choice(geo_countries)
+            
+            # If geo-restriction detected, try more diverse countries or disable geo bypass
+            if geo_restriction_detected and attempt >= 3:
+                # Try without geo bypass as last resort
+                if 'geo_bypass' in ydl_opts:
+                    del ydl_opts['geo_bypass']
+                if 'geo_bypass_country' in ydl_opts:
+                    del ydl_opts['geo_bypass_country']
+                selected_geo = None
+                logger.info(f"Geo-restriction detected, trying without geo bypass...")
+            else:
+                selected_geo = random.choice(geo_countries)
+                ydl_opts['geo_bypass'] = True
+                ydl_opts['geo_bypass_country'] = selected_geo
             
             ydl_opts['extractor_args'] = {
                 'youtube': {
                     'player_client': selected_client
                 }
             }
-            ydl_opts['geo_bypass'] = True
-            ydl_opts['geo_bypass_country'] = selected_geo
             
-            logger.info(f"Attempt {attempt + 1}/{max_retries}: Using client {selected_client}, geo {selected_geo}")
+            geo_info = f"geo {selected_geo}" if selected_geo else "no geo bypass"
+            logger.info(f"Attempt {attempt + 1}/{max_retries}: Using client {selected_client}, {geo_info}")
             
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -254,6 +269,21 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                         error_str = str(e)
                         last_error = e
                         logger.warning(f"Download failed (attempt {attempt + 1}): {error_str[:200]}")
+                        
+                        # Detect geo-restriction errors
+                        is_geo_restricted = ("not made this video available in your country" in error_str.lower() or
+                                            "not available in your country" in error_str.lower() or
+                                            "geo restricted" in error_str.lower())
+                        
+                        if is_geo_restricted:
+                            geo_restriction_detected = True
+                            logger.warning("Geo-restriction detected! Trying different country...")
+                            if attempt < max_retries - 1:
+                                # Try a different country
+                                delay = random.uniform(0.5, 1.5)
+                                logger.info(f"Waiting {delay:.1f}s before retry with different geo...")
+                                time.sleep(delay)
+                                continue
                         
                         # If this looks like an anti-bot block, try next client immediately
                         if "unavailable" in error_str.lower() or "private" in error_str.lower():
