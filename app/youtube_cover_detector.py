@@ -188,6 +188,7 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                 # Check if it's Netscape format (tab-separated)
                 valid_cookies = 0
                 youtube_cookies = 0
+                auth_cookies = []  # Track important auth cookies
                 for line in non_comment_lines:
                     parts = line.split('\t')
                     if len(parts) >= 7:
@@ -197,6 +198,9 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                         # Check for YouTube domains
                         if '.youtube.com' in domain or 'youtube.com' in domain:
                             youtube_cookies += 1
+                            # Check for important authentication cookies for age-gate
+                            if any(auth_name in cookie_name for auth_name in ['LOGIN_INFO', 'VISITOR_INFO1_LIVE', '__Secure-3PSID', 'SAPISID', '__Secure-3PAPISID']):
+                                auth_cookies.append(cookie_name)
                 
                 if valid_cookies == 0:
                     return False, "No valid cookie entries found (wrong format)"
@@ -204,7 +208,8 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                 if youtube_cookies == 0:
                     logger.warning(f"Cookie file has {valid_cookies} cookies but none for YouTube domains")
                 
-                return True, f"Valid: {valid_cookies} cookies ({youtube_cookies} YouTube cookies)"
+                auth_status = f"{len(auth_cookies)} auth cookies" if auth_cookies else "no auth cookies"
+                return True, f"Valid: {valid_cookies} cookies ({youtube_cookies} YouTube cookies, {auth_status})"
                 
             except Exception as e:
                 return False, f"Error reading file: {e}"
@@ -429,10 +434,24 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                             cookie_file = None
                             logger.warning("YOUTUBE_COOKIES env var not available for recreation")
                     else:
-                        # Log cookie file status periodically
+                        # Check if cookie count decreased (cookies may have expired)
                         file_size = os.path.getsize(cookie_file)
                         if attempt == 0 or attempt == max_retries - 1:
+                            # Extract cookie count from message for comparison
+                            import re
+                            cookie_count_match = re.search(r'(\d+)\s+cookies', message)
+                            if cookie_count_match:
+                                current_count = int(cookie_count_match.group(1))
+                                if attempt == max_retries - 1 and hasattr(verify_cookie_file, 'initial_count'):
+                                    if current_count < verify_cookie_file.initial_count:
+                                        logger.warning(f"Cookie count decreased from {verify_cookie_file.initial_count} to {current_count} - some cookies may have expired")
+                                    verify_cookie_file.initial_count = None  # Reset
                             logger.debug(f"Cookie file verified: {file_size} bytes - {message}")
+                            # Store initial count for comparison
+                            if attempt == 0:
+                                cookie_count_match = re.search(r'(\d+)\s+cookies', message)
+                                if cookie_count_match:
+                                    verify_cookie_file.initial_count = int(cookie_count_match.group(1))
             
             logger.info(f"Attempt {attempt + 1}/{max_retries}: Using client {selected_client}, geo {selected_geo}")
             
@@ -455,13 +474,22 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                         
                         if is_age_gate:
                             logger.warning("Age-gate error detected!")
-                            # If we have cookies but still got age-gate, try different client
+                            # If we have cookies but still got age-gate, try different client with delay
                             if cookie_file:
                                 logger.info("Cookies are available but age-gate still failed. Retrying with different client...")
                                 if attempt < max_retries - 1:
-                                    # Switch to iOS client which works better with cookies
-                                    client_options = [['ios'], ['tv_embedded'], ['ios', 'tv_embedded']]
+                                    # Switch to iOS/TV clients which work better with cookies
+                                    client_options = [['ios'], ['tv_embedded'], ['ios', 'tv_embedded'], ['ios', 'android']]
+                                    # Add longer delay for age-gate - YouTube needs time to process cookies
+                                    delay = random.uniform(2.0, 5.0)
+                                    logger.info(f"Age-gate: waiting {delay:.1f}s before retry with iOS/TV client...")
+                                    time.sleep(delay)
+                                    # Ensure cookies are still set
+                                    ydl_opts['cookiefile'] = cookie_file
                                     continue
+                                else:
+                                    logger.error("Age-gate failed after all retries with cookies. Cookies may be invalid or missing authentication.")
+                                    logger.error("Consider regenerating cookies or ensuring your account has proper age verification set up.")
                             else:
                                 # No cookies - check if cookie file exists but wasn't loaded
                                 for cookie_path in possible_cookie_paths:
