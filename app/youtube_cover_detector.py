@@ -163,6 +163,52 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                 except Exception as e:
                     logger.error(f"Error in progress hook: {e}")
 
+        def verify_cookie_file(file_path):
+            """Verify that cookie file is valid Netscape format and contains YouTube cookies."""
+            if not file_path or not os.path.exists(file_path):
+                return False, "File does not exist"
+            
+            try:
+                file_size = os.path.getsize(file_path)
+                if file_size < 50:
+                    return False, f"File too small ({file_size} bytes)"
+                
+                with open(file_path, 'r') as f:
+                    content = f.read()
+                
+                if not content:
+                    return False, "File is empty"
+                
+                lines = content.strip().split('\n')
+                non_comment_lines = [line for line in lines if line and not line.strip().startswith('#')]
+                
+                if len(non_comment_lines) == 0:
+                    return False, "No cookie entries found (only comments)"
+                
+                # Check if it's Netscape format (tab-separated)
+                valid_cookies = 0
+                youtube_cookies = 0
+                for line in non_comment_lines:
+                    parts = line.split('\t')
+                    if len(parts) >= 7:
+                        valid_cookies += 1
+                        domain = parts[0].strip()
+                        cookie_name = parts[5].strip() if len(parts) > 5 else ''
+                        # Check for YouTube domains
+                        if '.youtube.com' in domain or 'youtube.com' in domain:
+                            youtube_cookies += 1
+                
+                if valid_cookies == 0:
+                    return False, "No valid cookie entries found (wrong format)"
+                
+                if youtube_cookies == 0:
+                    logger.warning(f"Cookie file has {valid_cookies} cookies but none for YouTube domains")
+                
+                return True, f"Valid: {valid_cookies} cookies ({youtube_cookies} YouTube cookies)"
+                
+            except Exception as e:
+                return False, f"Error reading file: {e}"
+        
         # Check for cookie file - try multiple possible locations
         cookie_file = None
         possible_cookie_paths = [
@@ -174,13 +220,14 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
         
         for cookie_path in possible_cookie_paths:
             if cookie_path and os.path.exists(cookie_path):
-                file_size = os.path.getsize(cookie_path)
-                cookie_file = cookie_path
-                logger.info(f"✓ Found cookie file: {cookie_file} ({file_size} bytes)")
-                # Verify it's a valid cookie file (should have some content)
-                if file_size < 100:
-                    logger.warning(f"Cookie file seems too small ({file_size} bytes), might be invalid")
-                break
+                is_valid, message = verify_cookie_file(cookie_path)
+                if is_valid:
+                    file_size = os.path.getsize(cookie_path)
+                    cookie_file = cookie_path
+                    logger.info(f"✓ Found valid cookie file: {cookie_file} ({file_size} bytes) - {message}")
+                    break
+                else:
+                    logger.warning(f"Cookie file found but invalid: {cookie_path} - {message}")
         
         if not cookie_file:
             # Check if YOUTUBE_COOKIES env var exists - create cookie file on-demand if needed
@@ -191,11 +238,16 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                 try:
                     with open('/tmp/youtube_cookies.txt', 'w') as f:
                         f.write(youtube_cookies_env)
-                    # Verify it was created
+                    # Verify it was created and valid
                     if os.path.exists('/tmp/youtube_cookies.txt'):
+                        is_valid, message = verify_cookie_file('/tmp/youtube_cookies.txt')
                         file_size = os.path.getsize('/tmp/youtube_cookies.txt')
-                        cookie_file = '/tmp/youtube_cookies.txt'
-                        logger.info(f"✓ Created cookie file from env var: {cookie_file} ({file_size} bytes)")
+                        if is_valid:
+                            cookie_file = '/tmp/youtube_cookies.txt'
+                            logger.info(f"✓ Created valid cookie file from env var: {cookie_file} ({file_size} bytes) - {message}")
+                        else:
+                            logger.error(f"✗ Created cookie file but invalid: {message}")
+                            logger.error("Cookie file may be corrupted or in wrong format")
                     else:
                         logger.error("Failed to create cookie file even though write succeeded")
                 except Exception as e:
@@ -307,14 +359,27 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
         
         # Make sure cookie_file persists through retries
         for attempt in range(max_retries):
-            # Re-check cookie file at start of each attempt (in case it was created)
-            if not cookie_file:
+            # Re-check cookie file at start of each attempt (in case it was created or needs refresh)
+            if not cookie_file or (cookie_file and not os.path.exists(cookie_file)):
                 for cookie_path in possible_cookie_paths:
                     if cookie_path and os.path.exists(cookie_path):
+                        file_size = os.path.getsize(cookie_path)
                         cookie_file = cookie_path
                         ydl_opts['cookiefile'] = cookie_file
-                        logger.info(f"Found cookie file on retry: {cookie_file}")
+                        logger.info(f"Found cookie file on retry: {cookie_file} ({file_size} bytes)")
                         break
+                # If still no cookie file, try recreating from env var
+                if not cookie_file and os.getenv('YOUTUBE_COOKIES'):
+                    logger.warning("Cookie file lost, recreating from YOUTUBE_COOKIES env var...")
+                    try:
+                        with open('/tmp/youtube_cookies.txt', 'w') as f:
+                            f.write(os.getenv('YOUTUBE_COOKIES'))
+                        if os.path.exists('/tmp/youtube_cookies.txt'):
+                            cookie_file = '/tmp/youtube_cookies.txt'
+                            ydl_opts['cookiefile'] = cookie_file
+                            logger.info(f"Recreated cookie file: {cookie_file}")
+                    except Exception as e:
+                        logger.error(f"Failed to recreate cookie file: {e}")
             
             # Select random client and geo for this attempt
             selected_client = random.choice(client_options)
@@ -328,9 +393,46 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
             ydl_opts['geo_bypass'] = True
             ydl_opts['geo_bypass_country'] = selected_geo
             
-            # Ensure cookies are still set
-            if cookie_file and 'cookiefile' not in ydl_opts:
-                ydl_opts['cookiefile'] = cookie_file
+            # Ensure cookies are still set and file exists
+            if cookie_file:
+                if 'cookiefile' not in ydl_opts:
+                    ydl_opts['cookiefile'] = cookie_file
+                # Verify cookie file still exists before each attempt
+                if not os.path.exists(cookie_file):
+                    logger.warning(f"Cookie file disappeared: {cookie_file}. Recreating...")
+                    if os.getenv('YOUTUBE_COOKIES'):
+                        try:
+                            with open(cookie_file, 'w') as f:
+                                f.write(os.getenv('YOUTUBE_COOKIES'))
+                            logger.info(f"Recreated cookie file: {cookie_file}")
+                        except Exception as e:
+                            logger.error(f"Failed to recreate cookie file: {e}")
+                    else:
+                        cookie_file = None
+                elif os.path.exists(cookie_file):
+                    # Verify cookie file is still valid
+                    is_valid, message = verify_cookie_file(cookie_file)
+                    if not is_valid:
+                        logger.warning(f"Cookie file became invalid: {message}. Recreating...")
+                        if os.getenv('YOUTUBE_COOKIES'):
+                            try:
+                                with open(cookie_file, 'w') as f:
+                                    f.write(os.getenv('YOUTUBE_COOKIES'))
+                                is_valid_new, msg_new = verify_cookie_file(cookie_file)
+                                if is_valid_new:
+                                    logger.info(f"Recreated valid cookie file: {msg_new}")
+                                else:
+                                    logger.error(f"Recreated cookie file still invalid: {msg_new}")
+                            except Exception as e:
+                                logger.error(f"Failed to recreate cookie file: {e}")
+                        else:
+                            cookie_file = None
+                            logger.warning("YOUTUBE_COOKIES env var not available for recreation")
+                    else:
+                        # Log cookie file status periodically
+                        file_size = os.path.getsize(cookie_file)
+                        if attempt == 0 or attempt == max_retries - 1:
+                            logger.debug(f"Cookie file verified: {file_size} bytes - {message}")
             
             logger.info(f"Attempt {attempt + 1}/{max_retries}: Using client {selected_client}, geo {selected_geo}")
             
