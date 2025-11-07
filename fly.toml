@@ -4,7 +4,7 @@
 #
 
 app = 'yt-coverhunter'
-primary_region = 'fra'
+primary_region = 'gru'
 
 [build]
   dockerfile = "Dockerfile"
