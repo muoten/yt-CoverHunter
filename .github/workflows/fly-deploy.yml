@@ -11,6 +11,7 @@ jobs:
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       FLY_USE_DEPOT: "0"              # Disable Depot, use classic Fly remote builder
+      DEPOT_TOKEN: ""                 # Explicitly clear Depot token
       FLY_REMOTE_BUILDER_REGION: "fra"  # Use Frankfurt region
     steps:
       - name: Checkout
@@ -18,6 +19,15 @@ jobs:
 
       - name: Setup Flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Verify Depot is disabled
+        run: |
+          echo "Checking Depot configuration..."
+          echo "FLY_USE_DEPOT=${FLY_USE_DEPOT}"
+          echo "DEPOT_TOKEN=${DEPOT_TOKEN:-not set}"
+          # Ensure Depot is disabled
+          export FLY_USE_DEPOT=0
+          unset DEPOT_TOKEN || true
 
       - name: Validate Fly config
         run: |
@@ -50,14 +60,42 @@ jobs:
             fi
             
             # Explicitly disable Depot and use classic builder
+            # Unset any Depot-related env vars to ensure we don't use it
+            unset DEPOT_TOKEN || true
+            export FLY_USE_DEPOT=0
+            export DEPOT_PROJECT_ID=""
+            
+            echo "Deploying with FLY_USE_DEPOT=${FLY_USE_DEPOT}"
+            echo "Using classic Fly.io remote builder (not Depot)"
+            
+            # Try remote builder first, but if it fails due to Depot issues, 
+            # the error will be caught and we can try local build
             if flyctl deploy \
               --config fly.toml \
               -a yt-coverhunter \
               --remote-only \
-              --wait-timeout 45m; then
-              echo "Deployment successful!"
+              --no-cache \
+              --wait-timeout 60m \
+              2>&1 | tee /tmp/deploy.log; then
+              echo "Deployment successful with remote builder!"
               exit 0
+            elif grep -q "depot\|Depot\|DEPOT" /tmp/deploy.log 2>/dev/null; then
+              echo "Depot-related error detected. Trying local build instead..."
+              # Fallback to local build if Depot is causing issues
+              if flyctl deploy \
+                --config fly.toml \
+                -a yt-coverhunter \
+                --local-only \
+                --no-cache \
+                --wait-timeout 60m; then
+                echo "Deployment successful with local build!"
+                exit 0
+              else
+                echo "Local build also failed"
+                false
+              fi
             else
+              # Deployment failed
               RETRY_COUNT=$((RETRY_COUNT + 1))
               if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
                 echo "Deployment failed, will retry..."
