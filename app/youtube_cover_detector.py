@@ -38,7 +38,7 @@ active_tasks = {}
 
 # Anti-bot evasion: track recent downloads to implement cooldowns
 _last_download_time = 0
-_MIN_DOWNLOAD_DELAY = 30  # Minimum 30 seconds between downloads to avoid rate limits
+_MIN_DOWNLOAD_DELAY = 6  # Minimum 6 seconds between downloads to avoid rate limits
 
 THRESHOLD = config['THRESHOLD']
 
