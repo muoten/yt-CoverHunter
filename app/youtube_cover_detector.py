@@ -619,14 +619,9 @@ def _generate_embeddings_from_filepaths(audio_path1, audio_path2, embeddings1=No
     os.system(f"mkdir -p {WAV_FOLDER}")
     os.system(f"rm -f {WAV_FOLDER}/*.txt")
 
-    if embeddings1 is not None:
-        audio_path1 = audio_path2
-        os.system(f"rm {audio_path1}")
-    if embeddings2 is not None:
-        audio_path2 = audio_path1
-        os.system(f"rm {audio_path2}")
-
     if embeddings1 is not None and embeddings2 is not None:
+        os.system(f"rm {audio_path1}")
+        os.system(f"rm {audio_path2}")
         return embeddings1, embeddings2
 
     _generate_dataset_txt_from_files(audio_path1, audio_path2)
@@ -1042,8 +1037,8 @@ class CoverDetector:
         
     async def compare_videos(self, url1: str, url2: str, request: Dict = None) -> Dict[str, Any]:
         logger.info("Start comparison")
+        start_time = time.time()  # Initialize at function start to ensure it's always defined
         try:
-            start_time = time.time()
             
             # Update progress for first video download
             if request:
