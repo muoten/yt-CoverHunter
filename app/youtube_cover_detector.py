@@ -39,6 +39,7 @@ active_tasks = {}
 # Anti-bot evasion: track recent downloads to implement cooldowns
 _last_download_time = 0
 _MIN_DOWNLOAD_DELAY = 6  # Minimum 6 seconds between downloads to avoid rate limits
+_MAX_DOWNLOAD_DELAY = 30
 
 THRESHOLD = config['THRESHOLD']
 
@@ -1063,7 +1064,7 @@ class CoverDetector:
             
                 # Add longer random delay to avoid rate limiting after first download
                 # YouTube is more likely to block the second download, so use longer delay
-                delay = random.uniform(max(_MIN_DOWNLOAD_DELAY * 2, 60), max(_MIN_DOWNLOAD_DELAY * 4, 120))
+                delay = random.uniform(_MIN_DOWNLOAD_DELAY, _MAX_DOWNLOAD_DELAY)
                 logger.info(f"Waiting {delay:.1f}s before second video download to avoid rate limiting...")
                 await asyncio.sleep(delay)  # Use asyncio.sleep in async context
             
