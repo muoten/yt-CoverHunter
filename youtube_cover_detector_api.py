@@ -41,7 +41,8 @@ from app.parse_config import config
 from contextlib import suppress
 from app.youtube_cover_detector import (
     CoverDetector, 
-    cleanup_temp_files, 
+    cleanup_temp_files,
+    cleanup_chrome_user_data_dirs,
     logger
 )
 import math
@@ -118,34 +119,9 @@ def cleanup_old_wav_files(max_age_hours: int = 2):
     except Exception as e:
         logger.error(f"Error during WAV cleanup: {e}")
 
-def cleanup_chrome_user_data():
-    """Remove old Chrome user data directory to free up disk space"""
-    chrome_data_path = "/tmp/chrome_user_data"
-    
-    if not os.path.exists(chrome_data_path):
-        logger.debug("Chrome user data directory not found")
-        return
-    
-    try:
-        # Get directory size before removal
-        total_size = 0
-        for dirpath, dirnames, filenames in os.walk(chrome_data_path):
-            for filename in filenames:
-                file_path = os.path.join(dirpath, filename)
-                try:
-                    total_size += os.path.getsize(file_path)
-                except:
-                    pass
-        
-        # Remove the entire directory
-        import shutil
-        shutil.rmtree(chrome_data_path)
-        
-        size_mb = total_size / 1024 / 1024
-        logger.info(f"Removed Chrome user data directory: {chrome_data_path} (freed {size_mb:.1f}MB)")
-        
-    except Exception as e:
-        logger.error(f"Error removing Chrome user data directory: {e}")
+# Chrome cleanup is imported from app.youtube_cover_detector
+# Using alias for backward compatibility with existing code
+cleanup_chrome_user_data = cleanup_chrome_user_data_dirs
 
 #First version that works! Though it takes more than 3 minutes to run in fly.dev free tier
 YT_DLP_USE_COOKIES = os.getenv('YT_DLP_USE_COOKIES', False)

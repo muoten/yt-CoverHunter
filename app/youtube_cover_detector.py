@@ -999,6 +999,112 @@ def cleanup_temp_files(url1: str, url2: str):
             except Exception as e:
                 logger.error(f"Error cleaning up {wav_path}: {e}")
 
+def cleanup_chrome_user_data_dirs():
+    """Remove all Chrome user data directories from /tmp to free up disk space."""
+    total_freed = 0
+    removed_count = 0
+    
+    # Find all Chrome user data directories
+    chrome_patterns = [
+        "/tmp/chrome_user_data",
+        "/tmp/chrome_user_data_*",
+        "/tmp/chrome-test-profile-*"
+    ]
+    
+    for pattern in chrome_patterns:
+        for chrome_data_path in glob.glob(pattern):
+            if not os.path.isdir(chrome_data_path):
+                continue
+            
+            try:
+                # Get directory size before removal
+                dir_size = 0
+                for dirpath, dirnames, filenames in os.walk(chrome_data_path):
+                    for filename in filenames:
+                        file_path = os.path.join(dirpath, filename)
+                        try:
+                            dir_size += os.path.getsize(file_path)
+                        except:
+                            pass
+                
+                # Remove the entire directory
+                shutil.rmtree(chrome_data_path, ignore_errors=True)
+                total_freed += dir_size
+                removed_count += 1
+                logger.debug(f"Removed Chrome user data: {chrome_data_path} ({dir_size/1024/1024:.1f}MB)")
+                
+            except Exception as e:
+                logger.warning(f"Error removing Chrome user data {chrome_data_path}: {e}")
+    
+    if removed_count > 0:
+        size_mb = total_freed / 1024 / 1024
+        logger.info(f"Cleaned up {removed_count} Chrome user data directories, freed {size_mb:.1f}MB")
+
+def cleanup_old_tmp_files(max_age_minutes: int = 30):
+    """Clean up old files in WAV_FOLDER to prevent disk full.
+    
+    Removes WAV files, CQT files, and other temp files older than max_age_minutes.
+    Also cleans up Chrome user data directories.
+    """
+    try:
+        # First, clean up Chrome user data directories (they can be very large)
+        cleanup_chrome_user_data_dirs()
+        
+        if not os.path.exists(WAV_FOLDER):
+            return
+        
+        current_time = time.time()
+        max_age_seconds = max_age_minutes * 60
+        cleaned_count = 0
+        cleaned_size = 0
+        
+        # Clean up old files in WAV_FOLDER (WAV, MP3, CQT, TXT, PKL, etc.)
+        for filename in os.listdir(WAV_FOLDER):
+            file_path = os.path.join(WAV_FOLDER, filename)
+            if not os.path.isfile(file_path):
+                continue
+            
+            # Skip active processing files - only clean files that are definitely old
+            # Files ending in .wav, .mp3, .cqt.npy, .txt, .pkl are safe to clean if old
+            if not any(filename.endswith(ext) for ext in ['.wav', '.mp3', '.cqt.npy', '.txt', '.pkl', '.npy']):
+                continue
+            
+            try:
+                file_mtime = os.path.getmtime(file_path)
+                file_age = current_time - file_mtime
+                
+                # Remove files older than max_age_minutes
+                if file_age > max_age_seconds:
+                    file_size = os.path.getsize(file_path)
+                    os.remove(file_path)
+                    cleaned_count += 1
+                    cleaned_size += file_size
+                    logger.debug(f"Cleaned up old file: {filename} (age: {file_age/60:.1f}m, size: {file_size/1024:.1f}KB)")
+            except Exception as e:
+                logger.warning(f"Error cleaning file {filename}: {e}")
+        
+        # Also clean up CQT feature directory
+        cqt_dir = os.path.join(WAV_FOLDER, "cqt_feat")
+        if os.path.exists(cqt_dir):
+            for filename in os.listdir(cqt_dir):
+                file_path = os.path.join(cqt_dir, filename)
+                if os.path.isfile(file_path):
+                    try:
+                        file_mtime = os.path.getmtime(file_path)
+                        file_age = current_time - file_mtime
+                        if file_age > max_age_seconds:
+                            file_size = os.path.getsize(file_path)
+                            os.remove(file_path)
+                            cleaned_count += 1
+                            cleaned_size += file_size
+                    except Exception as e:
+                        logger.warning(f"Error cleaning CQT file {filename}: {e}")
+        
+        if cleaned_count > 0:
+            logger.info(f"Cleaned up {cleaned_count} old files, freed {cleaned_size/1024/1024:.1f}MB")
+    except Exception as e:
+        logger.error(f"Error in cleanup_old_tmp_files: {e}")
+
 def log_memory(tag: str = ""):
     """Log detailed memory usage with an optional tag"""
     process = psutil.Process(os.getpid())
@@ -1039,6 +1145,13 @@ class CoverDetector:
     async def compare_videos(self, url1: str, url2: str, request: Dict = None) -> Dict[str, Any]:
         logger.info("Start comparison")
         start_time = time.time()  # Initialize at function start to ensure it's always defined
+        
+        # Cleanup old files at the start to prevent /tmp from filling up
+        try:
+            cleanup_old_tmp_files(max_age_minutes=30)
+        except Exception as e:
+            logger.warning(f"Error cleaning old tmp files at start: {e}")
+        
         try:
             
             # Update progress for first video download
@@ -1179,7 +1292,29 @@ class CoverDetector:
             logger.error(f"Error comparing videos: {e}")
             raise
         finally:
-            # Cleanup
+            # Always cleanup WAV files and temporary files, even on error
+            try:
+                self.cleanup_temp_files(url1, url2)
+                # Also cleanup CQT feature files that might be left behind
+                video_id1 = extract_video_id(url1)
+                video_id2 = extract_video_id(url2)
+                for video_id in [video_id1, video_id2]:
+                    cqt_path = os.path.join(self.wav_folder, f"{video_id}.wav.cqt.npy")
+                    if os.path.exists(cqt_path):
+                        try:
+                            os.remove(cqt_path)
+                            logger.debug(f"Cleaned up CQT file: {cqt_path}")
+                        except Exception as e:
+                            logger.warning(f"Could not remove CQT file {cqt_path}: {e}")
+            except Exception as cleanup_error:
+                logger.error(f"Error during cleanup: {cleanup_error}")
+            
+            # Cleanup old files in /tmp to prevent disk full
+            try:
+                cleanup_old_tmp_files()
+            except Exception as cleanup_error:
+                logger.warning(f"Error cleaning old tmp files: {cleanup_error}")
+            
             log_memory("After cleanup")
 
     def cleanup_temp_files(self, url1: str, url2: str):
