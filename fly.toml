@@ -4,7 +4,7 @@
 #
 
 app = 'yt-coverhunter'
-primary_region = 'gru'
+primary_region = 'fra'
 
 [build]
   dockerfile = "Dockerfile"
@@ -22,5 +22,5 @@ primary_region = 'gru'
   memory = '4096mb'
 
 [mounts]
-source="yt_cover_data"
+source="yt_cover_data_fra_5gb"
 destination="/data"
