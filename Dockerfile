@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y \
     git-lfs \
     wget \
     gcc python3-dev \
+    nodejs npm \
     && rm -rf /var/lib/apt/lists/*
 
 # Verify ffmpeg installation

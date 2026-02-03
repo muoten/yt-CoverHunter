@@ -1319,12 +1319,14 @@
                     }
                     
                     if (data.status === 'failed') {
-                        throw new Error(data.error);
+                        const failError = new Error(data.error);
+                        failError.isBackendFailure = true;
+                        throw failError;
                     }
-                    
+
                     // Update progress with download progress if available
                     updateProgress(data.progress || 0, data);
-                    
+
                     // Wait with increasing delay
                     await new Promise(resolve => setTimeout(resolve, delay));
                     delay = Math.min(delay * BACKOFF_FACTOR, MAX_DELAY); // More aggressive backoff
@@ -1336,6 +1338,9 @@
                     }
 
                 } catch (error) {
+                    if (error.isBackendFailure) {
+                        throw error;  // Re-throw backend failures immediately
+                    }
                     console.error('Error polling results:', error);
                     await new Promise(resolve => setTimeout(resolve, delay));
                     attempts++;

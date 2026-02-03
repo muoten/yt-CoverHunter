@@ -753,27 +753,30 @@ async def get_comparison_status(request_id: str):
                 task['completed_time'] = time.time()
             # Remove completed task from active tasks
             del shared_active_tasks[request_id]
+        elif task['status'] == 'failed':
+            # Task already failed - return as-is without overwriting status
+            pass
         else:
             start_time = task.get('start_time', time.time())
             elapsed = time.time() - start_time
             avg_time = task.get('estimated_time')  # Use stored estimate
-            
+
             # Check for timeout
             if elapsed > config['REQUEST_TIMEOUT']:
                 task['status'] = 'failed'
                 task['error'] = 'Request timed out'
                 return task
-            
+
             # Calculate remaining time
             remaining = max(0, avg_time - elapsed)
-            
+
             # If less than 1 second remaining but not done, extend to timeout
             if remaining < 1 and task['status'] != 'completed':
                 remaining = max(0, config['REQUEST_TIMEOUT'] - elapsed)
                 task['extended'] = True
-            
+
             task['estimated_remaining'] = remaining
-            
+
             # Update status based on elapsed time
             if elapsed < 10:
                 task['status'] = 'downloading_videos'
@@ -784,7 +787,7 @@ async def get_comparison_status(request_id: str):
             else:
                 task['status'] = 'calculating_similarity'
                 task['progress'] = 70 + ((elapsed - 25) / (avg_time - 25)) * 25
-            
+
             task['progress'] = min(95, task['progress'])
         
         return task

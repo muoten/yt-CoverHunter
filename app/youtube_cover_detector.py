@@ -26,6 +26,7 @@ import io
 from typing import Dict, Any
 import shutil
 import glob
+import uuid
 import psutil
 from datetime import datetime
 from app.utils.memory_logger import log_detailed_memory
@@ -40,6 +41,42 @@ active_tasks = {}
 _last_download_time = 0
 _MIN_DOWNLOAD_DELAY = 6  # Minimum 6 seconds between downloads to avoid rate limits
 _MAX_DOWNLOAD_DELAY = 30
+
+# Cache of video IDs that permanently failed (geo-restricted, private, age-restricted)
+# Avoids re-attempting the same broken videos. Maps video_id -> error reason.
+_failed_video_cache = {}
+
+# Cookie file for YouTube authentication (bypasses datacenter IP blocks)
+_COOKIE_FILE = os.getenv('YT_COOKIE_FILE', config.get('YT_COOKIE_FILE', '/data/cookies.txt'))
+_USE_COOKIES = os.path.exists(_COOKIE_FILE) if _COOKIE_FILE else False
+
+# Residential proxy for bypassing hard datacenter IP blocks
+# Uses sticky sessions so the same IP is used for metadata + download
+_PROXY_URL_BASE = os.getenv('YT_PROXY_URL', config.get('YT_PROXY_URL', ''))
+_USE_PROXY = bool(_PROXY_URL_BASE)
+
+def _make_sticky_proxy_url(duration_minutes=10):
+    """Build a Decodo sticky session proxy URL from the base URL.
+
+    Sticky sessions ensure the same residential IP is used for both
+    metadata extraction and stream download, preventing YouTube 403 errors
+    from IP-bound signed URLs.
+
+    Base URL format: http://USERNAME:PASSWORD@gate.decodo.com:7000
+    Sticky format:   http://user-USERNAME-session-SESSID-sessionduration-MIN:PASSWORD@gate.decodo.com:7000
+    """
+    if not _PROXY_URL_BASE:
+        return ''
+    from urllib.parse import urlparse, urlunparse
+    parsed = urlparse(_PROXY_URL_BASE)
+    username = parsed.username or ''
+    password = parsed.password or ''
+    session_id = uuid.uuid4().hex[:12]
+    sticky_user = f"user-{username}-session-{session_id}-sessionduration-{duration_minutes}"
+    netloc = f"{sticky_user}:{password}@{parsed.hostname}"
+    if parsed.port:
+        netloc += f":{parsed.port}"
+    return urlunparse((parsed.scheme, netloc, parsed.path, '', '', ''))
 
 THRESHOLD = config['THRESHOLD']
 
@@ -83,6 +120,10 @@ async def process_queue():
                 active_tasks[request['id']] = request
             finally:
                 comparison_queue.task_done()
+                # Cooldown between comparisons to avoid YouTube IP blocking
+                delay = random.uniform(_MIN_DOWNLOAD_DELAY, _MAX_DOWNLOAD_DELAY)
+                logger.info(f"Cooldown between comparisons: waiting {delay:.1f}s...")
+                await asyncio.sleep(delay)
         except Exception as e:
             logger.error(f"Error in queue processor: {e}")
             await asyncio.sleep(1)  # Prevent tight loop on errors
@@ -102,17 +143,32 @@ def setup_logger():
 
 logger = setup_logger()
 
-def _generate_audio_from_youtube_id(youtube_id, request=None, prefer_ios=False):
+if _USE_COOKIES:
+    logger.info(f"YouTube cookies loaded from {_COOKIE_FILE}")
+else:
+    logger.warning(f"No YouTube cookie file found at {_COOKIE_FILE} - downloads may fail from datacenter IPs")
+
+if _USE_PROXY:
+    logger.info(f"Residential proxy configured (will be used as fallback for blocked videos)")
+else:
+    logger.info("No proxy configured - set YT_PROXY_URL env var to enable proxy fallback")
+
+def _generate_audio_from_youtube_id(youtube_id, request=None):
     """Generate audio from YouTube ID with user agent rotation and anti-bot evasion
-    
+
     Args:
         youtube_id: YouTube video ID
         request: Optional request dict for progress tracking
-        prefer_ios: If True, prefer ios client first (useful for second video to vary pattern)
     """
     
     global _last_download_time
-    
+
+    # Check if this video previously failed with a permanent error
+    if youtube_id in _failed_video_cache:
+        reason = _failed_video_cache[youtube_id]
+        logger.warning(f"Skipping {youtube_id}: previously failed ({reason})")
+        raise Exception(f"{reason}: {youtube_id}")
+
     # Anti-bot evasion: Add delay between downloads
     current_time = time.time()
     time_since_last = current_time - _last_download_time
@@ -220,60 +276,30 @@ def _generate_audio_from_youtube_id(youtube_id, request=None, prefer_ios=False):
             }],
             'outtmpl': f'{WAV_FOLDER}/{youtube_id}.%(ext)s',
         }
-        
-        # Dynamic client rotation for anti-bot evasion
-        # Use only android and ios - most reliable, no signature extraction issues
-        client_options = [
-            ['android'],  # First choice - most reliable, no signature extraction issues
-            ['ios'],  # Second choice - good for age-gated/restricted content
-            ['android', 'ios'],  # Fallback chain - android with ios backup
-        ]
-        
-        # Expanded geo countries list for better geo-restriction bypass
-        geo_countries = ['US', 'UK', 'CA', 'AU', 'DE', 'FR', 'JP', 'KR', 'NL', 'SE', 'NO', 'DK', 'FI', 'NZ', 'SG']
-        
+
+        # Use cookies if available (bypasses datacenter IP blocks)
+        if _USE_COOKIES:
+            ydl_opts['cookiefile'] = _COOKIE_FILE
+            logger.info(f"Using cookie file: {_COOKIE_FILE}")
+
         last_error = None
-        max_retries = 5  # Increased retries for geo-restriction issues
-        
+        max_retries = 3
+
         geo_restriction_detected = False
-        
+        geo_countries = ['US', 'UK', 'DE', 'FR', 'NL', 'SE']
+
         for attempt in range(max_retries):
-            # Vary client selection to avoid detection
-            if attempt == 0:
-                # First attempt: use prefer_ios flag to vary pattern between first and second video
-                if prefer_ios:
-                    # For second video, start with ios to avoid same pattern as first video
-                    selected_client = ['ios']
-                    logger.info("Using ios client first (second video - varying pattern)")
-                else:
-                    # For first video, use android (most reliable)
-                    selected_client = ['android']
-            else:
-                # Subsequent attempts: random selection
-                selected_client = random.choice(client_options)
-            
-            # If geo-restriction detected, try more diverse countries or disable geo bypass
-            if geo_restriction_detected and attempt >= 3:
-                # Try without geo bypass as last resort
-                if 'geo_bypass' in ydl_opts:
-                    del ydl_opts['geo_bypass']
-                if 'geo_bypass_country' in ydl_opts:
-                    del ydl_opts['geo_bypass_country']
-                selected_geo = None
-                logger.info(f"Geo-restriction detected, trying without geo bypass...")
-            else:
-                selected_geo = random.choice(geo_countries)
+            # Use default web client - android/ios require PO tokens and fail
+            if 'extractor_args' in ydl_opts:
+                del ydl_opts['extractor_args']
+
+            if geo_restriction_detected:
+                selected_geo = geo_countries[attempt % len(geo_countries)]
                 ydl_opts['geo_bypass'] = True
                 ydl_opts['geo_bypass_country'] = selected_geo
-            
-            ydl_opts['extractor_args'] = {
-                'youtube': {
-                    'player_client': selected_client
-                }
-            }
-            
-            geo_info = f"geo {selected_geo}" if selected_geo else "no geo bypass"
-            logger.info(f"Attempt {attempt + 1}/{max_retries}: Using client {selected_client}, {geo_info}")
+                logger.info(f"Attempt {attempt + 1}/{max_retries}: default web client, geo {selected_geo}")
+            else:
+                logger.info(f"Attempt {attempt + 1}/{max_retries}: default web client")
             
             # Log equivalent command line for debugging
             def ydl_opts_to_cmd_list(youtube_id, opts):
@@ -334,9 +360,17 @@ def _generate_audio_from_youtube_id(youtube_id, request=None, prefer_ios=False):
                             if 'preferredcodec' in pp:
                                 cmd_parts.extend(['--audio-format', pp['preferredcodec']])
                 
+                # JS runtime for YouTube signature solving
+                cmd_parts.extend(['--js-runtimes', 'node'])
+                cmd_parts.extend(['--remote-components', 'ejs:github'])
+
+                # Proxy
+                if 'proxy' in opts and opts['proxy']:
+                    cmd_parts.extend(['--proxy', opts['proxy']])
+
                 # Add the URL
                 cmd_parts.append(f'https://www.youtube.com/watch?v={youtube_id}')
-                
+
                 return cmd_parts
             
             cmd_list = ydl_opts_to_cmd_list(youtube_id, ydl_opts)
@@ -404,19 +438,15 @@ def _generate_audio_from_youtube_id(youtube_id, request=None, prefer_ios=False):
                         logger.warning(f"CLI download failed (attempt {attempt + 1}): {error_str[:200]}")
                         
                         # Apply same error handling as Python API
-                        # Detect geo-restriction errors
+                        # Detect geo-restriction errors - permanent failure from datacenter IPs
                         is_geo_restricted = ("not made this video available in your country" in error_str.lower() or
                                             "not available in your country" in error_str.lower() or
                                             "geo restricted" in error_str.lower())
-                        
+
                         if is_geo_restricted:
-                            geo_restriction_detected = True
-                            logger.warning("Geo-restriction detected! Trying different country...")
-                            if attempt < max_retries - 1:
-                                delay = random.uniform(0.5, 1.5)
-                                logger.info(f"Waiting {delay:.1f}s before retry with different geo...")
-                                time.sleep(delay)
-                                continue
+                            logger.warning(f"Video is geo-restricted, not retrying: {youtube_id}")
+                            _failed_video_cache[youtube_id] = "Geo-restricted"
+                            raise Exception(f"Geo-restricted: {youtube_id}")
                         
                         # Detect format availability errors
                         is_format_error = ("requested format is not available" in error_str.lower() or
@@ -425,24 +455,46 @@ def _generate_audio_from_youtube_id(youtube_id, request=None, prefer_ios=False):
                                          "only images are available" in error_str.lower())
                         
                         if is_format_error:
-                            logger.warning("Format extraction error detected. Trying different client...")
+                            logger.warning("Format extraction error detected. Retrying...")
                             if attempt < max_retries - 1:
-                                client_options = [['android'], ['ios'], ['android', 'ios']]
                                 delay = random.uniform(0.5, 1.5)
-                                logger.info(f"Waiting {delay:.1f}s before retry with mobile client...")
+                                logger.info(f"Waiting {delay:.1f}s before retry...")
                                 time.sleep(delay)
                                 continue
-                        
-                        # Anti-bot block detection
-                        if "unavailable" in error_str.lower() or "private" in error_str.lower():
+
+                        # Private videos - don't retry
+                        if "private video" in error_str.lower():
+                            logger.warning(f"Video is private, not retrying: {youtube_id}")
+                            _failed_video_cache[youtube_id] = "Private video"
+                            raise Exception(f"Private video: {youtube_id}")
+
+                        # "Video unavailable" - may be datacenter IP blocking, retry with delay
+                        if "video unavailable" in error_str.lower():
                             if attempt < max_retries - 1:
-                                logger.info(f"Anti-bot block detected. Retrying immediately with different client...")
+                                delay = random.uniform(3, 6)
+                                logger.warning(f"Video unavailable (may be datacenter IP block). Waiting {delay:.1f}s before retry...")
+                                time.sleep(delay)
                                 continue
                             else:
-                                # Last attempt failed, try worst quality as final fallback
+                                _failed_video_cache[youtube_id] = "Video unavailable"
+                                raise Exception(f"Video unavailable: {youtube_id}")
+
+                        # Age-restricted videos - can't bypass without cookies, don't retry
+                        if "sign in to confirm your age" in error_str.lower() or "age" in error_str.lower() and "sign in" in error_str.lower():
+                            logger.warning(f"Video is age-restricted, not retrying: {youtube_id}")
+                            _failed_video_cache[youtube_id] = "Age-restricted"
+                            raise Exception(f"Video is age-restricted: {youtube_id}")
+
+                        # Actual anti-bot detection (403, bot check, etc.)
+                        if "sign in" in error_str.lower() or "403" in error_str.lower():
+                            if attempt < max_retries - 1:
+                                delay = random.uniform(2, 5)
+                                logger.info(f"Anti-bot block detected. Waiting {delay:.1f}s before retry...")
+                                time.sleep(delay)
+                                continue
+                            else:
                                 logger.info(f"Final attempt: trying worst quality...")
                                 ydl_opts['format'] = 'worstaudio/worst'
-                                # Rebuild command with worst quality
                                 cmd_list = ydl_opts_to_cmd_list(youtube_id, ydl_opts)
                                 full_cmd = ['python3', '-m', 'yt_dlp'] + cmd_list
                                 result = subprocess.run(full_cmd, capture_output=True, text=True, check=False)
@@ -451,7 +503,6 @@ def _generate_audio_from_youtube_id(youtube_id, request=None, prefer_ios=False):
                                     break
                                 else:
                                     last_error = Exception(f"yt-dlp CLI failed: {error_str[:200]}")
-                        else:
                             # Non-anti-bot error, try worst quality
                             logger.info(f"Trying worst quality format...")
                             ydl_opts['format'] = 'worstaudio/worst'
@@ -485,20 +536,15 @@ def _generate_audio_from_youtube_id(youtube_id, request=None, prefer_ios=False):
                             last_error = e
                             logger.warning(f"Download failed (attempt {attempt + 1}): {error_str[:200]}")
                         
-                        # Detect geo-restriction errors
+                        # Detect geo-restriction errors - permanent failure from datacenter IPs
                         is_geo_restricted = ("not made this video available in your country" in error_str.lower() or
                                             "not available in your country" in error_str.lower() or
                                             "geo restricted" in error_str.lower())
-                        
+
                         if is_geo_restricted:
-                            geo_restriction_detected = True
-                            logger.warning("Geo-restriction detected! Trying different country...")
-                            if attempt < max_retries - 1:
-                                # Try a different country
-                                delay = random.uniform(0.5, 1.5)
-                                logger.info(f"Waiting {delay:.1f}s before retry with different geo...")
-                                time.sleep(delay)
-                                continue
+                            logger.warning(f"Video is geo-restricted, not retrying: {youtube_id}")
+                            _failed_video_cache[youtube_id] = "Geo-restricted"
+                            raise Exception(f"Geo-restricted: {youtube_id}")
                         
                         # Detect format availability errors (signature extraction, SABR streaming, etc.)
                         is_format_error = ("requested format is not available" in error_str.lower() or
@@ -507,30 +553,51 @@ def _generate_audio_from_youtube_id(youtube_id, request=None, prefer_ios=False):
                                          "only images are available" in error_str.lower())
                         
                         if is_format_error:
-                            logger.warning("Format extraction error detected (signature extraction/SABR issue). Trying different client...")
+                            logger.warning("Format extraction error detected. Retrying...")
                             if attempt < max_retries - 1:
-                                # Use android/ios clients which don't have signature extraction issues
-                                client_options = [['android'], ['ios'], ['android', 'ios']]
                                 delay = random.uniform(0.5, 1.5)
-                                logger.info(f"Waiting {delay:.1f}s before retry with mobile client...")
+                                logger.info(f"Waiting {delay:.1f}s before retry...")
                                 time.sleep(delay)
                                 continue
                         
-                        # If this looks like an anti-bot block, try next client immediately
-                        if "unavailable" in error_str.lower() or "private" in error_str.lower():
+                        # Private videos - don't retry
+                        if "private video" in error_str.lower():
+                            logger.warning(f"Video is private, not retrying: {youtube_id}")
+                            _failed_video_cache[youtube_id] = "Private video"
+                            raise Exception(f"Private video: {youtube_id}")
+
+                        # "Video unavailable" - may be datacenter IP blocking, retry with delay
+                        if "video unavailable" in error_str.lower():
                             if attempt < max_retries - 1:
-                                logger.info(f"Anti-bot block detected. Retrying immediately with different client...")
+                                delay = random.uniform(3, 6)
+                                logger.warning(f"Video unavailable (may be datacenter IP block). Waiting {delay:.1f}s before retry...")
+                                time.sleep(delay)
                                 continue
                             else:
-                                # Last attempt failed, try worst quality as final fallback
+                                _failed_video_cache[youtube_id] = "Video unavailable"
+                                raise Exception(f"Video unavailable: {youtube_id}")
+
+                        # Age-restricted videos - can't bypass without cookies, don't retry
+                        if "sign in to confirm your age" in error_str.lower() or ("age" in error_str.lower() and "sign in" in error_str.lower()):
+                            logger.warning(f"Video is age-restricted, not retrying: {youtube_id}")
+                            _failed_video_cache[youtube_id] = "Age-restricted"
+                            raise Exception(f"Video is age-restricted: {youtube_id}")
+
+                        # Actual anti-bot detection (sign-in required, 403, etc.)
+                        if "sign in" in error_str.lower() or "403" in error_str.lower():
+                            if attempt < max_retries - 1:
+                                delay = random.uniform(2, 5)
+                                logger.info(f"Anti-bot block detected. Waiting {delay:.1f}s before retry...")
+                                time.sleep(delay)
+                                continue
+                            else:
                                 logger.info(f"Final attempt: trying worst quality...")
                                 ydl_opts['format'] = 'worstaudio/worst'
                                 try:
-                                    # ydl is still in scope within the with block
                                     ydl.download([f'https://www.youtube.com/watch?v={youtube_id}'])
-                                    break  # Success with worst quality
+                                    break
                                 except Exception as e2:
-                                    raise e  # Re-raise original error
+                                    raise e
                         else:
                             # Non-anti-bot error, try worst quality
                             logger.info(f"Trying worst quality format...")
@@ -543,6 +610,13 @@ def _generate_audio_from_youtube_id(youtube_id, request=None, prefer_ios=False):
                                 raise e  # Re-raise original error
             except Exception as e:
                 last_error = e
+                # Don't retry errors that are known to be permanent
+                error_msg = str(e).lower()
+                is_permanent = ("age-restricted" in error_msg or
+                               "private video" in error_msg or
+                               "geo-restricted" in error_msg)
+                if is_permanent:
+                    raise
                 if attempt < max_retries - 1:
                     logger.info(f"Retrying immediately with different client...")
                     continue
@@ -587,6 +661,72 @@ def _generate_audio_from_youtube_id(youtube_id, request=None, prefer_ios=False):
         return f"{youtube_id}.wav"
         
     except Exception as e:
+        error_msg = str(e).lower()
+        # Proxy fallback: if video unavailable and proxy is configured, retry once via proxy
+        if _USE_PROXY and "video unavailable" in error_msg:
+            logger.info(f"Attempting proxy fallback for {youtube_id} via residential proxy (sticky session)...")
+            try:
+                sticky_proxy = _make_sticky_proxy_url(duration_minutes=10)
+                logger.info(f"Using sticky proxy session for {youtube_id}")
+                proxy_ydl_opts = {
+                    'format': 'bestaudio/best',
+                    'socket_timeout': 15,
+                    'retries': 3,
+                    'quiet': True,
+                    'no_warnings': True,
+                    'postprocessors': [{
+                        'key': 'FFmpegExtractAudio',
+                        'preferredcodec': 'mp3',
+                    }],
+                    'outtmpl': f'{WAV_FOLDER}/{youtube_id}.%(ext)s',
+                    'proxy': sticky_proxy,
+                }
+                # No cookies with proxy - cookie session is tied to original
+                # user's geo/IP and conflicts with proxy's different IP
+
+                proxy_cmd_list = ydl_opts_to_cmd_list(youtube_id, proxy_ydl_opts)
+                full_cmd = ['python3', '-m', 'yt_dlp'] + proxy_cmd_list
+                logger.info(f"Proxy bestaudio (sticky) for {youtube_id}")
+                try:
+                    result = subprocess.run(full_cmd, capture_output=True, text=True, check=False, timeout=60)
+                except subprocess.TimeoutExpired:
+                    logger.warning(f"Proxy sticky session timed out after 60s for {youtube_id}")
+                    for ext in ['mp3', 'mp4', 'mp4.part', 'mp4.ytdl', 'webm', 'webm.part']:
+                        partial = f'{WAV_FOLDER}/{youtube_id}.{ext}'
+                        if os.path.exists(partial):
+                            os.remove(partial)
+                    _failed_video_cache[youtube_id] = "Video unavailable (proxy timeout)"
+                    raise ValueError("Proxy download timed out")
+
+                if result.returncode == 0:
+                    logger.info(f"Proxy download successful (sticky session) for {youtube_id}")
+                    _failed_video_cache.pop(youtube_id, None)
+                    mp3_path = f'{WAV_FOLDER}/{youtube_id}.mp3'
+                    wav_path = f'{WAV_FOLDER}/{youtube_id}.wav'
+                    if not os.path.exists(mp3_path):
+                        raise ValueError(f"Proxy download succeeded but MP3 not found at {mp3_path}")
+                    if config['PROCESS_ONLY_FIRST_N_SECONDS'] > 0:
+                        ffmpeg_cmd = f'ffmpeg -y -i "{mp3_path}" -ac 1 -ar 16000 -t {config["EXTRACT_ONLY_FIRST_N_SECONDS"]} "{wav_path}" 2>&1'
+                    else:
+                        ffmpeg_cmd = f'ffmpeg -y -i "{mp3_path}" -ac 1 -ar 16000 "{wav_path}" 2>&1'
+                    os.popen(ffmpeg_cmd).read()
+                    if not os.path.exists(wav_path):
+                        raise ValueError("Proxy download: audio conversion failed")
+                    logger.info(f"Proxy fallback: successfully created {wav_path}")
+                    os.remove(mp3_path)
+                    return f"{youtube_id}.wav"
+                else:
+                    error_out = (result.stderr or result.stdout or "").strip()
+                    logger.warning(f"Proxy sticky session failed for {youtube_id}: {error_out[:200]}")
+                    for ext in ['mp3', 'mp4', 'mp4.part', 'mp4.ytdl', 'webm', 'webm.part']:
+                        partial = f'{WAV_FOLDER}/{youtube_id}.{ext}'
+                        if os.path.exists(partial):
+                            os.remove(partial)
+                    _failed_video_cache[youtube_id] = "Video unavailable (even via proxy)"
+            except Exception as proxy_err:
+                logger.error(f"Proxy fallback failed for {youtube_id}: {proxy_err}")
+                _failed_video_cache[youtube_id] = "Video unavailable (proxy error)"
+
         logger.error(f"Error in _generate_audio_from_youtube_id: {str(e)}")
         logger.error(f"Full error details: {type(e).__name__}: {str(e)}")
         import traceback
@@ -672,28 +812,10 @@ def prepare_cover_detection(youtube_url1, youtube_url2):
     
 
 async def download_audio(youtube_id):
-    # Dynamic client rotation for anti-bot evasion (same as sync version)
-    # Use only android and ios - most reliable, no signature extraction issues
-    client_options = [
-        ['android'],  # First choice - most reliable
-        ['ios'],  # Second choice - good for restricted content
-        ['android', 'ios'],  # Fallback chain - android with ios backup
-    ]
-    geo_countries = ['US', 'UK', 'CA', 'AU', 'DE']
-    
     last_error = None
     max_retries = 3
-    
+
     for attempt in range(max_retries):
-        # Prioritize android on first attempt, then randomize
-        if attempt == 0:
-            # First attempt: try android first (most reliable)
-            selected_client = ['android']
-        else:
-            # Subsequent attempts: random selection
-            selected_client = random.choice(client_options)
-        selected_geo = random.choice(geo_countries)
-        
         ydl_opts = {
             'format': 'bestaudio/best',
             'quiet': True,
@@ -704,28 +826,23 @@ async def download_audio(youtube_id):
                 'preferredcodec': 'mp3',
             }],
             'outtmpl': f'{WAV_FOLDER}/{youtube_id}.%(ext)s',
-            'extractor_args': {
-                'youtube': {
-                    'player_client': selected_client
-                }
-            },
-            'geo_bypass': True,
-            'geo_bypass_country': selected_geo,
         }
-        
+
         try:
-            logger.info(f"Async download attempt {attempt + 1}/{max_retries}: client {selected_client}, geo {selected_geo}")
+            logger.info(f"Async download attempt {attempt + 1}/{max_retries}: default web client")
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 await asyncio.to_thread(ydl.download, [f'https://www.youtube.com/watch?v={youtube_id}'])
-            break  # Success
+            break
         except Exception as e:
             last_error = e
             error_str = str(e)
             logger.warning(f"Async download failed (attempt {attempt + 1}): {error_str[:200]}")
+            if "video unavailable" in error_str.lower():
+                raise  # Don't retry unavailable videos
             if attempt < max_retries - 1:
-                logger.info(f"Retrying immediately with different client...")
+                await asyncio.sleep(random.uniform(2, 5))
                 continue
-    
+
     if last_error and not os.path.exists(f'{WAV_FOLDER}/{youtube_id}.mp3'):
         raise last_error
 
@@ -1196,8 +1313,7 @@ class CoverDetector:
                 embeddings2 = None
 
                 logger.info("Starting download of second video")
-                # Use prefer_ios=True for second video to vary the client pattern and avoid detection
-                wav2 = _generate_audio_from_youtube_id(video_id2, request=request, prefer_ios=True)
+                wav2 = _generate_audio_from_youtube_id(video_id2, request=request)
                 wav_path2 = os.path.join(self.wav_folder, wav2)
                 if request:
                     request['progress'] = 45
