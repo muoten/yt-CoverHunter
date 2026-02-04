@@ -228,7 +228,7 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                     logger.error(f"Error in progress hook: {e}")
 
         ydl_opts = {
-            'format': 'bestaudio/best',
+            'format': 'worstaudio/worst',
             'external_downloader': 'aria2c',
             'http_headers': {
                 'User-Agent': selected_user_agent,
@@ -669,7 +669,7 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                 sticky_proxy = _make_sticky_proxy_url(duration_minutes=10)
                 logger.info(f"Using sticky proxy session for {youtube_id}")
                 proxy_ydl_opts = {
-                    'format': 'bestaudio/best',
+                    'format': 'worstaudio/worst',
                     'socket_timeout': 15,
                     'retries': 3,
                     'quiet': True,
@@ -686,7 +686,7 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
 
                 proxy_cmd_list = ydl_opts_to_cmd_list(youtube_id, proxy_ydl_opts)
                 full_cmd = ['python3', '-m', 'yt_dlp'] + proxy_cmd_list
-                logger.info(f"Proxy bestaudio (sticky) for {youtube_id}")
+                logger.info(f"Proxy worstaudio (sticky) for {youtube_id}")
                 try:
                     result = subprocess.run(full_cmd, capture_output=True, text=True, check=False, timeout=60)
                 except subprocess.TimeoutExpired:
@@ -817,7 +817,7 @@ async def download_audio(youtube_id):
 
     for attempt in range(max_retries):
         ydl_opts = {
-            'format': 'bestaudio/best',
+            'format': 'worstaudio/worst',
             'quiet': True,
             'external_downloader': 'aria2c',
             'external_downloader_args': ['-x', '16', '-k', '1M'],
