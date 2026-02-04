@@ -1113,10 +1113,7 @@
     </div>
 
     <script>
-        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        const API_URL = isLocalhost
-            ? `http://${window.location.host}/api`  // Local development
-            : 'https://yt-coverhunter.fly.dev/api';  // Production URL
+        const API_URL = `${window.location.origin}/api`;
 
         console.log('Using API URL:', API_URL);
 
