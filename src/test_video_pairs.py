@@ -417,7 +417,7 @@ def test_video_pair(driver, video1_url, video2_url, pair_index, total_pairs):
             return "invalid_driver"
         
         # Navigate to the website
-        driver.get("http://ow4s8wgw8sog4cow8coo0kgw.46.225.92.232.sslip.io/")
+        driver.get("http://localhost:8080/")
         
         # Wait for the page to load with timeout
         wait = WebDriverWait(driver, 30)  # 30 second timeout
@@ -882,7 +882,7 @@ def test_all_video_pairs():
             
             # Set a 30-second timeout for the health check
             driver.set_page_load_timeout(30)
-            driver.get("http://ow4s8wgw8sog4cow8coo0kgw.46.225.92.232.sslip.io/")
+            driver.get("http://localhost:8080/")
             time.sleep(5)
             
             # Try to find the compare button to see if the page loads properly
