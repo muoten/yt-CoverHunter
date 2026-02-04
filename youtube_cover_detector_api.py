@@ -436,6 +436,7 @@ app.add_middleware(
         "https://yt-coverhunter.fly.dev/api",  # Fly.dev API URL
         "http://46.225.92.232:8080",  # Hetzner/Coolify (direct)
         "http://46.225.92.232",  # Hetzner/Coolify (via Traefik)
+        "http://ow4s8wgw8sog4cow8coo0kgw.46.225.92.232.sslip.io",  # Hetzner/Coolify (sslip.io)
         "*"  # Allow all origins for testing
     ],
     allow_credentials=True,
