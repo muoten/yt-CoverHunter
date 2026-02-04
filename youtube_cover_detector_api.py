@@ -434,6 +434,8 @@ app.add_middleware(
         "http://localhost:8080",  # Local development
         "https://yt-coverhunter.fly.dev",  # Fly.dev URL
         "https://yt-coverhunter.fly.dev/api",  # Fly.dev API URL
+        "http://46.225.92.232:8080",  # Hetzner/Coolify (direct)
+        "http://46.225.92.232",  # Hetzner/Coolify (via Traefik)
         "*"  # Allow all origins for testing
     ],
     allow_credentials=True,
