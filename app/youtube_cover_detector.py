@@ -662,8 +662,8 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
         
     except Exception as e:
         error_msg = str(e).lower()
-        # Proxy fallback: if video unavailable and proxy is configured, retry once via proxy
-        if _USE_PROXY and "video unavailable" in error_msg:
+        # Proxy fallback: if video unavailable or bot-blocked and proxy is configured, retry once via proxy
+        if _USE_PROXY and ("video unavailable" in error_msg or "sign in to confirm" in error_msg):
             logger.info(f"Attempting proxy fallback for {youtube_id} via residential proxy (sticky session)...")
             try:
                 sticky_proxy = _make_sticky_proxy_url(duration_minutes=10)
