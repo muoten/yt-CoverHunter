@@ -364,6 +364,9 @@ def _generate_audio_from_youtube_id(youtube_id, request=None):
                 cmd_parts.extend(['--js-runtimes', 'node'])
                 cmd_parts.extend(['--remote-components', 'ejs:github'])
 
+                # TLS fingerprint impersonation (via curl_cffi)
+                cmd_parts.extend(['--impersonate', 'chrome'])
+
                 # Proxy
                 if 'proxy' in opts and opts['proxy']:
                     cmd_parts.extend(['--proxy', opts['proxy']])
